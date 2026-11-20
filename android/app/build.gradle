@@ -9,11 +9,11 @@ android {
         applicationId 'com.qigai.neon'
         minSdk 24
         targetSdk 35
-        versionCode (System.getenv('NEON_VERSION_CODE') ?: '1').toInteger()
-        versionName System.getenv('NEON_VERSION_NAME') ?: '0.1.0'
+        versionCode = Integer.parseInt(System.getenv('NEON_VERSION_CODE') ?: '1')
+        versionName = (System.getenv('NEON_VERSION_NAME') ?: '0.1.0').replaceFirst('^v', '')
         manifestPlaceholders = [hostName: 'neon.qigai.tech', defaultUrl: neonUrl + '/']
         resValue 'string', 'asset_statements',
-            '[{ "relation": ["delegate_permission/common.handle_all_urls"], "target": { "namespace": "web", "site": "' + neonUrl + '" } }]'
+            '[{ \\"relation\\": [\\"delegate_permission/common.handle_all_urls\\"], \\"target\\": { \\"namespace\\": \\"web\\", \\"site\\": \\"' + neonUrl + '\\" } }]'
     }
     buildTypes {
         release { minifyEnabled false }
