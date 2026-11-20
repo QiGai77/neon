@@ -1,0 +1,29 @@
+plugins { id 'com.android.application' }
+
+def neonUrl = 'https://neon.qigai.tech'
+
+android {
+    namespace 'com.qigai.neon'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.qigai.neon'
+        minSdk 24
+        targetSdk 35
+        versionCode (System.getenv('NEON_VERSION_CODE') ?: '1').toInteger()
+        versionName System.getenv('NEON_VERSION_NAME') ?: '0.1.0'
+        manifestPlaceholders = [hostName: 'neon.qigai.tech', defaultUrl: neonUrl + '/']
+        resValue 'string', 'asset_statements',
+            '[{ "relation": ["delegate_permission/common.handle_all_urls"], "target": { "namespace": "web", "site": "' + neonUrl + '" } }]'
+    }
+    buildTypes {
+        release { minifyEnabled false }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}
