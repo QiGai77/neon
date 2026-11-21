@@ -111,14 +111,14 @@ fun SettingsContent(
                 .padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            SectionLabel("模型与密钥 · Android Keystore 加密")
+            SectionLabel("模型")
             NeonCard(padding = PaddingValues(vertical = 4.dp)) {
                 ProviderId.entries.forEachIndexed { i, p ->
                     val has = hasKey(p)
                     SettingRow(
                         icon = if (p == ProviderId.DEEPSEEK) Lucide.KeyRound else Lucide.FileJson,
                         title = p.label,
-                        sub = if (p == ProviderId.DEEPSEEK) "官方接口 · ${s.deepseekModel}" else "订阅 · ${s.goModel}",
+                        sub = if (p == ProviderId.DEEPSEEK) s.deepseekModel else s.goModel,
                         status = if (has) "已连接" else null,
                     ) {
                         if (has) {
@@ -136,7 +136,7 @@ fun SettingsContent(
             Spacer(Modifier.height(6.dp))
             SectionLabel("对话")
             NeonCard(padding = PaddingValues(vertical = 4.dp)) {
-                SettingRow(Lucide.Sparkles, "默认开启深度思考", "新对话的深度思考开关初始状态") {
+                SettingRow(Lucide.Sparkles, "默认开启深度思考", "") {
                     NeonSwitch(s.deepThinkDefault, onDeepThinkDefault)
                 }
             }
@@ -152,14 +152,14 @@ fun SettingsContent(
             }
 
             Spacer(Modifier.height(6.dp))
-            SectionLabel("Google Drive 工作区")
+            SectionLabel("Google Drive")
             NeonCard(padding = PaddingValues(vertical = 4.dp)) {
                 if (s.driveConnected) {
-                    SettingRow(Lucide.HardDrive, s.driveEmail ?: "已授权", "我的云端硬盘 / Neon /", status = "已连接") {
+                    SettingRow(Lucide.HardDrive, s.driveEmail ?: "已授权", "Neon 文件夹", status = "已连接") {
                         NeonChip("同步", style = ChipStyle.Outline, icon = Lucide.RefreshCw, height = 30.dp, onClick = onDriveSync)
                     }
                     RowDivider()
-                    SettingRow(Lucide.Cloud, "自动同步对话", "每轮回复结束后写入 Neon/对话/") {
+                    SettingRow(Lucide.Cloud, "自动同步对话", "") {
                         NeonSwitch(s.driveAutoSync, onDriveAutoSync)
                     }
                     RowDivider()
@@ -168,7 +168,7 @@ fun SettingsContent(
                         NeonChip("在 Google 账号中撤销", style = ChipStyle.Outline, icon = Lucide.ArrowUpRight, height = 30.dp, onClick = onDriveRevoke)
                     }
                 } else {
-                    SettingRow(Lucide.HardDrive, "未授权", s.driveError ?: "只申请 drive.file 权限") {
+                    SettingRow(Lucide.HardDrive, "未授权", s.driveError ?: "") {
                         NeonChip("授权", style = ChipStyle.Active, height = 30.dp, onClick = onDriveAuthorize)
                     }
                 }
@@ -188,7 +188,7 @@ fun SettingsContent(
                 Spacer(Modifier.height(8.dp))
                 Text("Neon ${BuildConfig.VERSION_NAME}", style = NeonType.label())
                 Text(
-                    "build ${BuildConfig.VERSION_CODE} · 对话存本机 Room，Drive 只做备份",
+                    "build ${BuildConfig.VERSION_CODE}",
                     style = NeonType.tnum(NeonType.caption().copy(color = c.inkTertiary)), textAlign = TextAlign.Center,
                 )
             }
@@ -232,7 +232,7 @@ private fun SettingRow(
                     Text(status, style = NeonType.caption().copy(color = if (c.isDark) c.live else c.inkSecondary))
                 }
             }
-            Text(sub, style = NeonType.caption(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (sub.isNotBlank()) Text(sub, style = NeonType.caption(), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.width(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) { trailing() }

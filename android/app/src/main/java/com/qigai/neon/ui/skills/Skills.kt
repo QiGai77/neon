@@ -106,32 +106,26 @@ fun SkillsContent(
     onOpen: (SkillUi) -> Unit,
     onDistill: () -> Unit,
     onViewTrace: () -> Unit,
+    onAdd: () -> Unit = {},
 ) {
     val c = Neon.colors
     Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
-        PageTopBar("技能库", onBack) {
-            if (driveSynced != null) Row(Modifier.padding(end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Lucide.Cloud, null, Modifier.size(14.dp), tint = c.inkSecondary)
-                Spacer(Modifier.width(5.dp))
-                Text("Drive 同步 · $driveSynced", style = NeonType.caption())
-            }
-        }
+        PageTopBar("技能库", onBack) { IconBtn(Lucide.Plus, "添加技能", onClick = onAdd) }
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item(key = "search") { SearchField(query, onQuery, "搜索技能或 / 触发词") }
+            item(key = "search") { SearchField(query, onQuery, "搜索技能") }
             if (learned != null) item(key = "learned") { LearnedCard(learned, onDistill, onViewTrace) }
             item(key = "head") {
                 Row(Modifier.padding(top = 4.dp)) {
-                    SectionLabel("全部技能 · ${skills.size}", Modifier.weight(1f))
-                    Text("最近使用", style = NeonType.overline(), modifier = Modifier.padding(end = 4.dp))
+                    SectionLabel("全部 ${skills.size}", Modifier.weight(1f))
                 }
             }
             if (skills.isEmpty()) item(key = "empty") {
                 NeonCard(padding = PaddingValues(22.dp)) {
-                    EmptyState("还没有技能", "把 SKILL.md 放进 Drive /Neon/技能/，或在对话结束后一键沉淀")
+                    EmptyState("还没有技能")
                 }
             } else item(key = "list") {
                 NeonCard(padding = PaddingValues(0.dp)) {
@@ -183,8 +177,10 @@ private fun LearnedCard(l: LearnedRunUi, onDistill: () -> Unit, onViewTrace: () 
                 if (i < l.steps.lastIndex) Icon(Lucide.ArrowRight, null, Modifier.padding(top = 6.dp).size(12.dp), tint = c.inkTertiary)
             }
         }
-        Spacer(Modifier.height(10.dp))
-        Text(l.note, style = NeonType.caption().copy(fontSize = 13.sp))
+        if (l.note.isNotBlank()) {
+            Spacer(Modifier.height(10.dp))
+            Text(l.note, style = NeonType.caption().copy(fontSize = 13.sp))
+        }
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PillButton("沉淀为技能", icon = Lucide.Sparkles, height = 40.dp, onClick = onDistill)

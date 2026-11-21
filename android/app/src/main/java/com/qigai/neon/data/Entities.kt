@@ -125,12 +125,33 @@ interface SettingDao {
 }
 
 @Database(
-    entities = [ConversationEntity::class, MessageEntity::class, SettingEntity::class],
-    version = 1,
+    entities = [
+        ConversationEntity::class, MessageEntity::class, SettingEntity::class,
+        ConnectorEntity::class, HandsTraceEntity::class, ScheduledTaskEntity::class, TaskReceiptEntity::class,
+    ],
+    version = 2,
     exportSchema = true,
 )
 abstract class NeonDatabase : RoomDatabase() {
     abstract fun conversations(): ConversationDao
     abstract fun messages(): MessageDao
     abstract fun settings(): SettingDao
+    abstract fun connectorDao(): ConnectorDao
+    abstract fun handsTraceDao(): HandsTraceDao
+    abstract fun scheduledTaskDao(): ScheduledTaskDao
+    abstract fun taskReceiptDao(): TaskReceiptDao
+
+    companion object {
+        /** v0.3.1: connectors, Hands traces, scheduled tasks, receipts. Conversations are kept. */
+        val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `connectors` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `category` TEXT NOT NULL, `subtitle` TEXT NOT NULL, `endpointUrl` TEXT, `status` TEXT NOT NULL, `toolCount` INTEGER NOT NULL, `toolsJson` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `hands_traces` (`id` TEXT NOT NULL, `runId` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `stepIndex` INTEGER NOT NULL, `engine` TEXT NOT NULL, `targetPackage` TEXT NOT NULL, `actionType` TEXT NOT NULL, `targetLabel` TEXT NOT NULL, `detail` TEXT NOT NULL, `status` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_hands_traces_runId_stepIndex` ON `hands_traces` (`runId`, `stepIndex`)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `scheduled_tasks` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `skillName` TEXT NOT NULL, `prompt` TEXT NOT NULL, `scheduleLabel` TEXT NOT NULL, `intervalMinutes` INTEGER NOT NULL, `requiresWifi` INTEGER NOT NULL, `requiresScreenOn` INTEGER NOT NULL, `enabled` INTEGER NOT NULL, `lastRunAt` INTEGER, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `task_receipts` (`id` TEXT NOT NULL, `taskId` TEXT NOT NULL, `sessionId` TEXT, `status` TEXT NOT NULL, `summary` TEXT NOT NULL, `emailsScanned` INTEGER NOT NULL, `eventsSynced` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `executedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_task_receipts_taskId_executedAt` ON `task_receipts` (`taskId`, `executedAt`)")
+            }
+        }
+    }
 }

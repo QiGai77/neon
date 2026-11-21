@@ -17,6 +17,8 @@ class EncryptedTokenStore(context: Context) {
     companion object {
         const val DEEPSEEK = "deepseek_api_key"
         const val OPENCODE_GO = "opencode_go_key"
+        const val WEBHOOK_URL = "webhook_url"
+        const val WEBHOOK_SECRET = "webhook_secret"
     }
 
     private val prefs: SharedPreferences = try {
@@ -54,4 +56,14 @@ class EncryptedTokenStore(context: Context) {
     }
 
     fun has(name: String) = get(name) != null
+
+    fun getConnectorToken(connectorId: String): String? = get("conn_access_$connectorId")
+    fun saveConnectorToken(connectorId: String, token: String, refreshToken: String? = null) {
+        put("conn_access_$connectorId", token)
+        if (refreshToken != null) put("conn_refresh_$connectorId", refreshToken)
+    }
+    fun removeConnectorToken(connectorId: String) { remove("conn_access_$connectorId"); remove("conn_refresh_$connectorId") }
+    fun saveWebhookConfig(url: String, secret: String) { put(WEBHOOK_URL, url); put(WEBHOOK_SECRET, secret) }
+    fun getWebhookUrl(): String = get(WEBHOOK_URL).orEmpty()
+    fun getWebhookSecret(): String = get(WEBHOOK_SECRET).orEmpty()
 }

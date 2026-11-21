@@ -100,7 +100,7 @@ fun HandsCapsule(
             StatusDot(if (paused) Color(0xFFF59A3A) else c.lime, 8.dp)
             Spacer(Modifier.width(8.dp))
             Text(
-                "第 $step/$total 步 · $action", style = NeonType.label().copy(color = Color(0xFFF2F1EC)),
+                "$step/$total  $action", style = NeonType.label().copy(color = Color(0xFFF2F1EC)),
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
             Box(Modifier.size(28.dp).clip(NeonShapes.capsule).clickable(onClick = onCollapse), contentAlignment = Alignment.Center) {
@@ -145,8 +145,8 @@ fun SomMarker(index: Int, modifier: Modifier = Modifier) {
 }
 
 enum class HandsEngine(val title: String, val sub: String) {
-    ACCESSIBILITY("引擎 A · 无障碍", "免除被截屏"),
-    SHIZUKU("引擎 B · Shizuku", "无线 ADB"),
+    ACCESSIBILITY("无障碍", ""),
+    SHIZUKU("Shizuku", ""),
 }
 
 /** Bottom card under the live screen: engine switch + loop watchdog. */
@@ -167,9 +167,6 @@ fun HandsEngineCard(
             Icon(Lucide.Hand, null, Modifier.size(18.dp), tint = c.inkPrimary)
             Spacer(Modifier.width(8.dp))
             Text("Hands 引擎", style = NeonType.cardTitle().copy(fontSize = 16.sp), modifier = Modifier.weight(1f))
-            Icon(Lucide.RefreshCw, null, Modifier.size(14.dp), tint = c.inkSecondary)
-            Spacer(Modifier.width(5.dp))
-            Text("一键切换", style = NeonType.caption())
         }
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth().clip(NeonShapes.tile).background(c.bgSubtle).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -184,7 +181,7 @@ fun HandsEngineCard(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(e.title, style = NeonType.label().copy(color = if (on) c.inkPrimary else c.inkSecondary), maxLines = 1)
-                        Text(if (ok) e.sub else "未授权", style = NeonType.overline())
+                        if (!ok) Text("未授权", style = NeonType.overline())
                     }
                     if (on) StatusDot(c.accent, 8.dp)
                 }
@@ -221,7 +218,7 @@ fun HandsTaskContent(task: HandsTaskUi, onBack: () -> Unit, onMore: () -> Unit) 
             IconBtn(Lucide.ArrowLeft, "返回", Modifier.align(Alignment.CenterStart), onClick = onBack)
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Hands 任务", style = NeonType.title())
-                Text("${task.title} · 第 ${task.step}/${task.total} 步", style = NeonType.overline())
+                Text("${task.title}  ${task.step}/${task.total}", style = NeonType.overline())
             }
             IconBtn(Lucide.EllipsisVertical, "更多", Modifier.align(Alignment.CenterEnd), tint = c.inkSecondary, onClick = onMore)
         }
@@ -234,8 +231,8 @@ fun HandsTaskContent(task: HandsTaskUi, onBack: () -> Unit, onMore: () -> Unit) 
                 ) {
                     Icon(Lucide.CircleAlert, null, Modifier.size(17.dp), tint = c.danger)
                     Spacer(Modifier.width(8.dp))
-                    Text("已拦截 · 等待确认", style = NeonType.label().copy(color = c.danger), modifier = Modifier.weight(1f))
-                    Text("00:%02d".format(task.blockedCountdown), style = NeonType.tnum(NeonType.code()).copy(color = c.danger))
+                    Text("等待确认", style = NeonType.label().copy(color = c.danger), modifier = Modifier.weight(1f))
+                    if (task.blockedCountdown >= 0) Text("00:%02d".format(task.blockedCountdown), style = NeonType.tnum(NeonType.code()).copy(color = c.danger))
                 }
             }
             NeonCard(padding = PaddingValues(16.dp)) {
@@ -306,23 +303,18 @@ fun SentinelSheetContent(s: SentinelUi, onDeny: () -> Unit, onLease: () -> Unit,
                     Icon(Lucide.Fingerprint, null, Modifier.size(32.dp), tint = c.inkPrimary)
                 }
                 Spacer(Modifier.height(10.dp))
-                Text("轻触指纹传感器以继续", style = NeonType.label())
+                Text("验证指纹", style = NeonType.label())
                 Row(Modifier.clip(NeonShapes.capsule).clickable(onClick = onAltAuth).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Lucide.ScanFace, null, Modifier.size(13.dp), tint = c.inkTertiary)
                     Spacer(Modifier.width(5.dp))
-                    Text("或使用人脸识别", style = NeonType.caption().copy(color = c.inkTertiary))
+                    Text("人脸识别", style = NeonType.caption().copy(color = c.inkTertiary))
                 }
             }
         }
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            PillButton("拒绝并中止", Modifier.weight(1f), kind = ButtonKind.Danger, icon = Lucide.X, height = 46.dp, onClick = onDeny)
-            PillButton("本次会话租约", Modifier.weight(1f), icon = Lucide.Lock, height = 46.dp, onClick = onLease)
+            PillButton("拒绝", Modifier.weight(1f), kind = ButtonKind.Danger, icon = Lucide.X, height = 46.dp, onClick = onDeny)
+            PillButton("本次会话允许", Modifier.weight(1f), icon = Lucide.Lock, height = 46.dp, onClick = onLease)
         }
-        Spacer(Modifier.height(10.dp))
-        Text(
-            "租约至本次会话结束 · 可随时在 Sentinel 中撤销", style = NeonType.overline(),
-            textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
-        )
     }
 }

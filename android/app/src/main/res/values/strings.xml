@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_label">Neon Hands</string>
+    <string name="accessibility_service_description">让 Neon 读取屏幕并点击、滑动、输入。付款、发送等操作会先请你确认。</string>
+    <string name="notification_listener_label">Neon 通知</string>
+</resources>

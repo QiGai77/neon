@@ -145,7 +145,7 @@ fun ThinkingSection(text: String, durationMs: Long?, live: Boolean, liveStart: L
             val head = buildAnnotatedString {
                 append(if (live) "思考中" else "已深度思考")
                 if (live || durationMs != null) {
-                    append(" · ")
+                    append("  ")
                     withStyle(SpanStyle(fontFamily = Neon.fonts.code)) { append("%.1fs".format(secs)) }
                 }
             }
@@ -228,7 +228,7 @@ fun ToolChips(tools: List<Pair<String, String>>, results: Map<String, ContentBlo
                 }
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    if (summary.isBlank()) name else "$name · $summary",
+                    if (summary.isBlank()) name else "$name  $summary",
                     style = NeonType.chip().copy(color = c.inkSecondary), maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -320,7 +320,7 @@ fun AssistantMessage(
                     m.model,
                     if (m.status == "stopped") "已停止" else null,
                     m.outputTokens?.let { "$it tokens" },
-                ).joinToString(" · ")
+                ).joinToString("  ")
                 Text(meta, style = NeonType.tnum(NeonType.overline()), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }

@@ -19,3 +19,7 @@ android/local.properties
 android/.kotlin/
 android/build/
 android-twa/.gradle/
+
+# sandbox payload (built in CI)
+android/app/src/main/assets/rootfs-arm64.tar*
+android/app/src/main/jniLibs/

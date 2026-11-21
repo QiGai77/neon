@@ -36,6 +36,22 @@ object GoogleDriveAuth {
         return if (r.hasResolution()) null else r.accessToken
     }
 
+    /** Gmail + Calendar + Drive, requested only when the user connects Google Workspace. */
+    val WORKSPACE_SCOPES = listOf(
+        DRIVE_FILE,
+        "https://www.googleapis.com/auth/gmail.modify",
+        "https://www.googleapis.com/auth/calendar.events",
+    )
+
+    suspend fun authorizeWorkspace(context: Context): AuthorizationResult =
+        Identity.getAuthorizationClient(context)
+            .authorize(AuthorizationRequest.builder().setRequestedScopes(WORKSPACE_SCOPES.map { Scope(it) }).build()).await()
+
+    suspend fun silentWorkspaceToken(context: Context): String? = runCatching {
+        val r = authorizeWorkspace(context)
+        if (r.hasResolution()) null else r.accessToken
+    }.getOrNull()
+
     fun resultFromIntent(context: Context, data: Intent?): AuthorizationResult =
         Identity.getAuthorizationClient(context).getAuthorizationResultFromIntent(data)
 }

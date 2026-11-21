@@ -81,7 +81,7 @@ class VoiceInput(
         asr = asrProvider()
         if (asr != null) startAudioRecord()
         else if (systemRecognizerAvailable()) startRecognizer()
-        else _state.value = VoiceState(error = "本机没有语音识别服务；配置 DeepSeek Key 后可用 DeepSeek ASR")
+        else _state.value = VoiceState(error = "本机没有语音识别，连接 DeepSeek 后可用")
     }
 
     @SuppressLint("MissingPermission")
@@ -133,7 +133,7 @@ class VoiceInput(
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> if (lastPartial.isNotBlank()) null else "没有听清，请再说一次"
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "缺少麦克风权限"
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "语音识别网络错误"
-                    else -> "语音识别错误 ($error)"
+                    else -> "语音识别错误 $error"
                 }
                 if (lastPartial.isNotBlank()) onText?.invoke(lastPartial)
                 finishRecognizer(msg)

@@ -129,7 +129,6 @@ fun MemoryTasksContent(
                                     }
                                 }
                             }
-                            Text("每次对话前自动载入 · 可编辑或遗忘", style = NeonType.caption())
                         }
                         IconBtn(Lucide.Pencil, "编辑", tint = c.inkSecondary, size = 18.dp, onClick = onEditMemory)
                     }
@@ -146,10 +145,10 @@ fun MemoryTasksContent(
                 }
             }
             item(key = "taskHead") {
-                SectionLabel("定时任务 · WorkManager", Modifier.padding(top = 8.dp), trailing = "${tasks.size} 个")
+                SectionLabel("定时任务", Modifier.padding(top = 8.dp), trailing = "${tasks.size} 个")
             }
             if (tasks.isEmpty()) item(key = "noTasks") {
-                NeonCard(padding = PaddingValues(22.dp)) { EmptyState("还没有定时任务", "在对话里说「每天早上 8 点给我早报」就能建一个") }
+                NeonCard(padding = PaddingValues(22.dp)) { EmptyState("还没有定时任务") }
             }
             items(tasks, key = { it.id }) { t -> TaskCard(t, onToggle, onOpenReceipt, onRerun) }
         }
@@ -191,8 +190,8 @@ private fun TaskCard(t: TaskUi, onToggle: (TaskUi, Boolean) -> Unit, onOpen: (Ta
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PillButton("在对话中打开", Modifier.weight(1f), kind = ButtonKind.Secondary, height = 38.dp, onClick = { onOpen(t) })
-                    PillButton("立即重跑", Modifier.weight(1f), kind = ButtonKind.Secondary, icon = Lucide.RotateCw, height = 38.dp, onClick = { onRerun(t) })
+                    PillButton("打开", Modifier.weight(1f), kind = ButtonKind.Secondary, height = 38.dp, onClick = { onOpen(t) })
+                    PillButton("重跑", Modifier.weight(1f), kind = ButtonKind.Secondary, icon = Lucide.RotateCw, height = 38.dp, onClick = { onRerun(t) })
                 }
             }
         }

@@ -105,7 +105,7 @@ class ScreensSnapshotTest {
 
     private val ask = msg("u1", "user", listOf(ContentBlock.Text("帮我把本月的账单邮件整理成表格存到 Drive，再查一下菜鸟快递到哪了")), ago = 9000)
 
-    private val plan = "命中技能：\n/账单整理 · /查快递 · 记忆 2 条\n\n规划步骤：\n1. 读取 Gmail 本月账单邮件（4 封）\n2. 在 Alpine 沙箱用 python3 解析为 CSV\n3. 写入 Drive /Neon/附件/\n4. 用 Hands 打开菜鸟查询物流"
+    private val plan = "命中技能：\n/账单整理 /查快递\n\n规划步骤：\n1. 读取 Gmail 本月账单邮件\n2. 在 Alpine 沙箱用 python3 解析为 CSV\n3. 写入 Drive /Neon/附件/\n4. 用 Hands 打开菜鸟查询物流"
 
     private val thinkingLive = msg("a1", "assistant", listOf(ContentBlock.Thinking(plan)), status = "streaming", ago = 3800)
 
@@ -150,7 +150,7 @@ class ScreensSnapshotTest {
         palette: Boolean = false,
         voice: VoiceState = VoiceState(),
         busy: Boolean = false,
-        model: String? = "OpenCode Go · DeepSeek V4 Pro",
+        model: String? = "DeepSeek V4 Pro",
         title: String? = "账单与快递",
         skillList: List<PaletteSkill> = skills,
     ) = ChatContent(
@@ -184,7 +184,7 @@ class ScreensSnapshotTest {
         conversations = convs, currentId = "c1",
         onOpenSettings = {}, onRefreshQuota = {}, onConnectGo = {}, onAuthorizeDrive = {}, onDriveSync = {},
         onOpenFolder = {}, onOpenConversation = {}, onNewChat = {}, onRename = {}, onDelete = {},
-        sandbox = SandboxUi("Alpine arm64", true, detail = "Python 3.12 · neon-mcp-cli · /workspace 已挂载"),
+        sandbox = SandboxUi("Alpine aarch64", true, detail = "Python 3"),
         hubs = HubCounts(connectors = 5, skills = 8, memories = 12, runningTasks = 3),
     )
 
@@ -294,11 +294,11 @@ class ScreensSnapshotTest {
     @Composable
     private fun Connectors() = ConnectorsContent(
         connectors = listOf(
-            ConnectorUi("g", ConnectorGroup.CLOUD, "Google Workspace", "Drive · Gmail · Calendar · 自动续期", ConnectorStatus.Connected("已连接 · 9 工具"), monogram = "G"),
-            ConnectorUi("n", ConnectorGroup.CLOUD, "Notion", "/.well-known 自动发现 OAuth", ConnectorStatus.Authorizing("正在探测工具元数据…"), monogram = "N", badge = "远程 MCP"),
-            ConnectorUi("l", ConnectorGroup.LOCAL, "本地 MCP", "stdio · sqlite-mcp · python-tools · 离线可用", ConnectorStatus.Connected("运行中 · 6 工具"), icon = Lucide.Server, badge = "Alpine"),
-            ConnectorUi("p", ConnectorGroup.LOCAL, "手机原生能力", "剪贴板 · Share Sheet · 通知监听 · DeepLink", ConnectorStatus.Connected("4/4 已授权"), icon = Lucide.Smartphone),
-            ConnectorUi("w", ConnectorGroup.AUTOMATION, "Tasker / 飞书", "Webhook · 出站签名校验", ConnectorStatus.Idle, icon = Lucide.Workflow, action = "自连测试"),
+            ConnectorUi("g", ConnectorGroup.CLOUD, "Google", "Gmail、日历、Drive", ConnectorStatus.Connected("9 个工具"), monogram = "G"),
+            ConnectorUi("n", ConnectorGroup.CLOUD, "Notion", "mcp.notion.com", ConnectorStatus.Authorizing("等待授权"), monogram = "N", badge = "MCP"),
+            ConnectorUi("l", ConnectorGroup.LOCAL, "本地 MCP", "sqlite-mcp", ConnectorStatus.Connected("6 个工具"), icon = Lucide.Server, badge = "本地"),
+            ConnectorUi("p", ConnectorGroup.LOCAL, "通知", "读取最近的通知", ConnectorStatus.Connected("已授权"), icon = Lucide.Smartphone),
+            ConnectorUi("w", ConnectorGroup.AUTOMATION, "Webhook", "hooks.example.com", ConnectorStatus.Idle, icon = Lucide.Workflow, action = "测试"),
         ),
         onBack = {}, onSearch = {}, onOpen = {}, onAction = {}, onAddMcp = {},
     )
@@ -311,7 +311,7 @@ class ScreensSnapshotTest {
             SomMarker(7, Modifier.align(Alignment.TopEnd).padding(top = 300.dp, end = 30.dp))
             HandsEngineCard(
                 HandsEngine.ACCESSIBILITY, setOf(HandsEngine.ACCESSIBILITY, HandsEngine.SHIZUKU),
-                "LoopWatch 防死循环正常 · 轨迹已记录 3 步", onEngine = {},
+                "运行正常", onEngine = {},
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
@@ -321,15 +321,15 @@ class ScreensSnapshotTest {
     private fun Sentinel() = NeonSheetHost(open = true, onDismiss = {}, content = {
         HandsTaskContent(
             HandsTaskUi(
-                "查快递并代付运费", 6, 8, blockedCountdown = 14,
-                reasons = listOf(GuardReason("TapWords 命中", "确认支付", true), GuardReason("金额风险", "¥128.00", true), GuardReason("来源步骤", "第 6/8 步 · 点击按钮")),
+                "查快递并代付运费", 6, 8, blockedCountdown = -1,
+                reasons = listOf(GuardReason("目标", "确认支付 ¥128.00", true), GuardReason("按钮：确认支付", ""), GuardReason("金额：¥128.00", "")),
                 trace = listOf("打开菜鸟", "搜索快递单号", "进入详情", "查看物流", "点击「代付运费」", "点击「确认支付」"),
             ),
             onBack = {}, onMore = {},
         )
     }) {
         SentinelSheetContent(
-            SentinelUi("Sentinel 高危操作确认", "Neon 将在「菜鸟」中执行以下点击", "Button · 可点击", "确认支付 ¥128.00", "com.cainiao.wireless", true),
+            SentinelUi("确认这一步", "在菜鸟里点击", "操作", "确认支付 ¥128.00", "com.cainiao.wireless", true),
             onDeny = {}, onLease = {}, onAltAuth = {},
         )
     }
@@ -343,14 +343,14 @@ class ScreensSnapshotTest {
             SkillUi("晨间早报", "brief", Lucide.Bell, Risk.LOW, listOf("Gmail", "Calendar")),
             SkillUi("周报生成", "weekly", Lucide.FileText, Risk.LOW, listOf("Drive", "Notion")),
         ),
-        learned = LearnedRunUi("Learn-from-Run 轨迹蒸馏", "来自「账单整理 + 查快递」· 刚刚", listOf("读 Gmail", "Alpine CSV", "打开菜鸟", "查物流"), "将生成 SKILL.md：触发词、所需工具、风险等级"),
+        learned = LearnedRunUi("从上次操作生成技能", "11/21 15:02", listOf("读 Gmail", "Alpine CSV", "打开菜鸟", "查物流"), ""),
         driveSynced = 8, query = "", onQuery = {}, onBack = {}, onOpen = {}, onDistill = {}, onViewTrace = {},
     )
 
     @Composable
     private fun Sandbox() = SandboxContent(
-        title = "Alpine 沙箱", subtitle = "PRoot · /workspace 已挂载",
-        facts = listOf("arm64 · 离线内置", "W^X 合规 (piLibs)", "/workspace ↔ Drive"),
+        title = "Alpine 沙箱", subtitle = "就绪",
+        facts = listOf("aarch64", "Python", "/workspace"),
         lines = listOf(
             TermLine(LineKind.PROMPT, "uname -a"),
             TermLine(LineKind.DIM, "Linux localhost 6.1.75-android14 aarch64"),
@@ -364,21 +364,21 @@ class ScreensSnapshotTest {
             TermLine(LineKind.STATUS, "python-tools", "running", "stdio"),
             TermLine(LineKind.STATUS, "notion", "connecting", "oauth", live = false),
             TermLine(LineKind.PROMPT, "rm -rf /workspace/*"),
-            TermLine(LineKind.DANGER, "✕ ShellGuard: 已拦截，等待用户确认"),
+            TermLine(LineKind.DANGER, "ShellGuard 拦截: rm -rf /workspace/*"),
         ),
         input = "", onInput = {},
-        blocked = ShellBlockUi("rm -rf /workspace/*", "将删除 /workspace 下 142 个文件并同步删除 Drive 镜像，此操作不可撤销。"),
+        blocked = ShellBlockUi("rm -rf /workspace/*", "会删除或破坏文件"),
         onBack = {}, onMore = {}, onKeepBlocked = {}, onRunAnyway = {}, onKey = {},
     )
 
     @Composable
     private fun MemoryTasks() = MemoryTasksContent(
-        facts = listOf("常用城市：杭州", "快递默认查菜鸟", "优先模型：deepseek-v4-pro", "早报时间：08:00"),
+        facts = listOf("住在杭州", "快递用菜鸟", "早报 8 点"),
         memorySynced = true,
         tasks = listOf(
-            TaskUi("t1", "晨间早报", "每天 08:00", Lucide.Bell, true, ReceiptUi("今日 08:00 执行回执 · 成功", true, listOf(Triple("扫描邮件", "23", "封"), Triple("同步日程", "5", "个"), Triple("耗时", "4.2", "s")))),
+            TaskUi("t1", "晨间早报", "每天 08:00", Lucide.Bell, true, ReceiptUi("08:00 成功", true, listOf(Triple("耗时", "4.2", "s")))),
             TaskUi("t2", "账单归档", "每月 1 日 09:00", Lucide.Mail, true),
-            TaskUi("t3", "快递追踪", "每 2 小时 · 仅 Wi-Fi", Lucide.Truck, true),
+            TaskUi("t3", "快递追踪", "每 2 小时", Lucide.Truck, true),
             TaskUi("t4", "周报生成", "每周五 18:00", Lucide.FileText, false),
         ),
         onBack = {}, onAdd = {}, onEditMemory = {}, onRemoveFact = {}, onAddFact = {}, onToggle = { _, _ -> }, onOpenReceipt = {}, onRerun = {},

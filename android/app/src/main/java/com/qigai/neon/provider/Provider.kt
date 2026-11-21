@@ -37,7 +37,7 @@ data class ModelInfo(
 
 data class ChatMessage(val role: String, val blocks: List<ContentBlock>)
 
-/** Tool declaration (Anthropic shape). Empty in M1 — the registry is wired but holds no tools. */
+/** Tool declaration (Anthropic shape). */
 data class ToolSpec(val name: String, val description: String, val inputSchema: JsonObject)
 
 data class ChatRequest(

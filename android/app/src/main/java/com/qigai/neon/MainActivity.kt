@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import com.qigai.neon.ui.chat.ChatScreen
 import com.qigai.neon.ui.chat.NeonSheets
 import com.qigai.neon.ui.chat.SheetKind
@@ -35,7 +36,7 @@ import com.qigai.neon.ui.settings.SettingsScreen
 import com.qigai.neon.ui.theme.NeonTheme
 import com.qigai.neon.ui.theme.ThemeMode
 
-class MainActivity : ComponentActivity() {
+class MainActivity : androidx.fragment.app.FragmentActivity() {
     private val vm: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,6 +63,9 @@ fun NeonRoot(vm: MainViewModel) {
     LaunchedEffect(toast) {
         toast?.let { Toast.makeText(ctx, it, Toast.LENGTH_SHORT).show(); vm.toast(null) }
     }
+    val backStack by nav.currentBackStackEntryAsState()
+    val route = backStack?.destination?.route
+    com.qigai.neon.ui.caps.SentinelHost(vm, onSandboxScreen = route == "sandbox") {
     NeonSheets(vm, sheet, { sheet = it }) {
         NavHost(
             nav, startDestination = "chat",
@@ -70,9 +74,15 @@ fun NeonRoot(vm: MainViewModel) {
             popEnterTransition = { fadeIn(tween(180)) + scaleIn(initialScale = 0.97f) },
             popExitTransition = { slideOutHorizontally(spring(0.9f, 420f)) { it / 5 } + fadeOut(tween(140)) },
         ) {
-            composable("chat") { ChatScreen(vm, openSheet = { sheet = it }, onOpenSettings = { nav.navigate("settings") }) }
+            composable("chat") { ChatScreen(vm, openSheet = { sheet = it }, onOpenSettings = { nav.navigate("settings") }, onNavigate = { nav.navigate(it) }) }
             composable("settings") { SettingsScreen(vm, openSheet = { sheet = it }, onBack = { nav.popBackStack() }) }
+            composable("connectors") { com.qigai.neon.ui.caps.ConnectorsRoute(vm, onBack = { nav.popBackStack() }, onOpenHands = { nav.navigate("hands") }) }
+            composable("hands") { com.qigai.neon.ui.caps.HandsRoute(vm, onBack = { nav.popBackStack() }) }
+            composable("skills") { com.qigai.neon.ui.caps.SkillsRoute(vm, onBack = { nav.popBackStack() }) }
+            composable("sandbox") { com.qigai.neon.ui.caps.SandboxRoute(vm, onBack = { nav.popBackStack() }) }
+            composable("memory") { com.qigai.neon.ui.caps.MemoryTasksRoute(vm, onBack = { nav.popBackStack() }) }
         }
+    }
     }
 }
 

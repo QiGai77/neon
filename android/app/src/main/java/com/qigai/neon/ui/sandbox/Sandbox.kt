@@ -99,6 +99,7 @@ fun SandboxContent(
     onKeepBlocked: () -> Unit,
     onRunAnyway: () -> Unit,
     onKey: (String) -> Unit,
+    onSubmit: () -> Unit = {},
 ) {
     val c = Neon.colors
     Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
@@ -115,7 +116,7 @@ fun SandboxContent(
         }
         Spacer(Modifier.height(12.dp))
         Column(Modifier.weight(1f).padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Terminal(lines, input, onInput, Modifier.weight(1f))
+            Terminal(lines, input, onInput, onSubmit, Modifier.weight(1f))
             AnimatedVisibility(blocked != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                 if (blocked != null) ShellGuardCard(blocked, onKeepBlocked, onRunAnyway)
             }
@@ -136,7 +137,7 @@ fun SandboxContent(
 }
 
 @Composable
-private fun Terminal(lines: List<TermLine>, input: String, onInput: (String) -> Unit, modifier: Modifier) {
+private fun Terminal(lines: List<TermLine>, input: String, onInput: (String) -> Unit, onSubmit: () -> Unit, modifier: Modifier) {
     val c = Neon.colors
     val ink = c.terminalInk
     val dim = c.terminalDim
@@ -145,7 +146,7 @@ private fun Terminal(lines: List<TermLine>, input: String, onInput: (String) -> 
         Row(verticalAlignment = Alignment.CenterVertically) {
             StatusDot(c.lime, 7.dp)
             Spacer(Modifier.width(8.dp))
-            Text("neon@alpine · bash", style = mono.copy(color = ink), modifier = Modifier.weight(1f))
+            Text("neon@alpine", style = mono.copy(color = ink), modifier = Modifier.weight(1f))
             Text("PRoot", style = mono.copy(color = dim))
         }
         Spacer(Modifier.height(10.dp))
@@ -171,7 +172,11 @@ private fun Terminal(lines: List<TermLine>, input: String, onInput: (String) -> 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("/workspace $ ", style = mono.copy(color = c.lime))
                 Box(Modifier.weight(1f)) {
-                    BasicTextField(input, onInput, singleLine = true, textStyle = mono.copy(color = ink), cursorBrush = SolidColor(c.lime), modifier = Modifier.fillMaxWidth())
+                    BasicTextField(
+                        input, onInput, singleLine = true, textStyle = mono.copy(color = ink), cursorBrush = SolidColor(c.lime), modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send, autoCorrectEnabled = false),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { onSubmit() }),
+                    )
                     if (input.isEmpty()) Box(Modifier.size(8.dp, 15.dp).background(c.lime))
                 }
             }
@@ -199,7 +204,7 @@ private fun ShellGuardCard(b: ShellBlockUi, onKeep: () -> Unit, onRun: () -> Uni
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PillButton("保持拦截", Modifier.weight(1f), height = 42.dp, onClick = onKeep)
-            PillButton("我已了解，执行", Modifier.weight(1f), kind = ButtonKind.Danger, height = 42.dp, onClick = onRun)
+            PillButton("执行", Modifier.weight(1f), kind = ButtonKind.Danger, height = 42.dp, onClick = onRun)
         }
     }
 }

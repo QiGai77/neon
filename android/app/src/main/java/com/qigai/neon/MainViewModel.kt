@@ -198,7 +198,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Validates with the real usage endpoint (free) like the web app; 401 rejects. */
     suspend fun saveGoKey(raw: String): String? {
-        val key = OpenCodeGoClient.parseImport(raw) ?: return "没有识别到 Key（可粘贴 Key 或 auth.json 内容）"
+        val key = OpenCodeGoClient.parseImport(raw) ?: return "没有识别到 Key"
         return try {
             val usage = c.go.fetchUsage(key)
             c.tokens.put(EncryptedTokenStore.OPENCODE_GO, key)

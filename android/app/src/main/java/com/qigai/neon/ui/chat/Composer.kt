@@ -222,11 +222,10 @@ private fun SkillPalette(skills: List<PaletteSkill>, query: String, onPick: (Pal
             Text("技能", style = NeonType.bodyMedium())
             Spacer(Modifier.width(10.dp))
             Text(
-                if (skills.isEmpty()) "SKILL.md" else "输入以筛选 · 共 ${skills.size} 个",
+                if (skills.isEmpty()) "" else "${skills.size}",
                 style = NeonType.tnum(NeonType.caption().copy(color = c.inkTertiary)), modifier = Modifier.weight(1f),
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
-            NeonChip("Drive 同步", style = ChipStyle.Soft, icon = Lucide.Cloud, height = 28.dp)
         }
         if (skills.isEmpty()) {
             Column(
@@ -237,7 +236,7 @@ private fun SkillPalette(skills: List<PaletteSkill>, query: String, onPick: (Pal
                 Spacer(Modifier.height(8.dp))
                 Text("还没有技能", style = NeonType.label())
                 Spacer(Modifier.height(2.dp))
-                Text("技能是 Drive /Neon/技能/ 里的 SKILL.md，接入后会出现在这里", style = NeonType.caption().copy(color = c.inkTertiary))
+                Text("在技能库添加", style = NeonType.caption().copy(color = c.inkTertiary))
             }
         } else if (shown.isEmpty()) {
             Text("没有匹配「$query」的技能", style = NeonType.caption(), modifier = Modifier.padding(start = 6.dp, bottom = 6.dp))

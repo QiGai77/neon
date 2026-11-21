@@ -31,7 +31,7 @@ sealed class AgentState {
     data object Idle : AgentState()
     data class Thinking(val conversationId: String, val startedAt: Long) : AgentState()
     data class CallingTool(val conversationId: String, val toolName: String) : AgentState()
-    /** Reserved for M2 RiskGate (biometric confirm). Never entered in M1. */
+    /** Sentinel is waiting for the user's confirmation. */
     data class WaitingGuard(val conversationId: String, val toolName: String) : AgentState()
     data class Streaming(val conversationId: String) : AgentState()
     data class Done(val conversationId: String, val stopReason: String) : AgentState()
@@ -58,6 +58,10 @@ class AgentRuntime(
     private val db: NeonDatabase,
     private val tools: ToolRegistry,
     private val scope: CoroutineScope,
+    private val skills: com.qigai.neon.skills.SkillRepository,
+    private val memory: com.qigai.neon.sysfiles.MemoryManager,
+    private val guardPending: () -> Boolean,
+    private val handsEnabled: () -> Boolean,
     private val onTurnFinished: (conversationId: String) -> Unit,
 ) {
     private val _state = MutableStateFlow<AgentState>(AgentState.Idle)
@@ -66,7 +70,9 @@ class AgentRuntime(
 
     companion object {
         const val MAX_STEPS = 12
-        const val SYSTEM = "你是 Neon，一个运行在用户 Android 手机上的简洁、可靠的 AI 助手。默认用用户使用的语言回答，使用 Markdown。"
+        const val SYSTEM = "你是 Neon，运行在用户 Android 手机上的助手。用用户的语言回答，使用 Markdown。" +
+            "可以调用工具：离线 Alpine 沙箱（/workspace）、Gmail、日历、Drive、手机剪贴板与通知、Hands 操作手机、MCP。" +
+            "需要时直接调用工具，不要编造结果；高危操作会由 Sentinel 请用户确认。"
         fun newId() = UUID.randomUUID().toString()
     }
 
@@ -185,14 +191,21 @@ class AgentRuntime(
             toolInput = StringBuilder()
         }
 
+        val lastUserText = db.messages().list(cid).lastOrNull { it.role == "user" }
+            ?.let { BlocksJson.decode(it.blocks).filterIsInstance<ContentBlock.Text>().joinToString("\n") { b -> b.text } }.orEmpty()
+        val system = buildString {
+            append(SYSTEM)
+            memory.formatForPrompt().takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
+            skills.matchByPrompt(lastUserText)?.let { sk -> append("\n\n【命中技能 ").append(sk.name).append("】\n").append(sk.body) }
+        }
         val req = ChatRequest(
-            model = cfg.model, system = SYSTEM, messages = history(cid).let { h ->
+            model = cfg.model, system = system, messages = history(cid).let { h ->
                 // history() includes the placeholder? it is empty so filtered out.
                 h
             },
             thinking = cfg.thinking, sessionId = cid,
             wantTitle = firstTurn && cfg.provider.id == ProviderId.DEEPSEEK,
-            tools = tools.specs(), modelInfo = cfg.modelInfo,
+            tools = tools.specs(handsEnabled()), modelInfo = cfg.modelInfo,
         )
         try {
             cfg.provider.stream(req).collect { ev ->
@@ -262,15 +275,13 @@ class AgentRuntime(
         val results = mutableListOf<ContentBlock>()
         for (u in uses) {
             _state.value = AgentState.CallingTool(cid, u.name)
-            val tool = tools.get(u.name)
-            val outcome = if (tool == null) {
-                ToolOutcome("工具 ${u.name} 未注册", isError = true)
-            } else {
-                // M2: RiskGate.check(...) → AgentState.WaitingGuard → BiometricPrompt
-                val input: JsonObject = runCatching { com.qigai.neon.provider.Http.json.parseToJsonElement(u.inputJson).jsonObject }
-                    .getOrDefault(JsonObject(emptyMap()))
-                runCatching { tool.execute(input) }.getOrElse { ToolOutcome(it.message ?: "工具执行失败", true) }
+            val watch = scope.launch {
+                while (true) {
+                    kotlinx.coroutines.delay(150)
+                    _state.value = if (guardPending()) AgentState.WaitingGuard(cid, u.name) else AgentState.CallingTool(cid, u.name)
+                }
             }
+            val outcome = try { tools.execute(cid, u.name, u.inputJson) } finally { watch.cancel() }
             results += ContentBlock.ToolResult(u.id, outcome.content, outcome.isError)
         }
         db.messages().insert(
@@ -280,6 +291,18 @@ class AgentRuntime(
             )
         )
         return true
+    }
+
+    /** Runs a prompt to completion without the chat UI (scheduled tasks). Returns conversation id and final text. */
+    suspend fun runHeadless(title: String, prompt: String, cfg: TurnConfig): Pair<String, String> {
+        val now = System.currentTimeMillis()
+        val cid = newId()
+        db.conversations().upsert(ConversationEntity(id = cid, title = title.take(40), createdAt = now, updatedAt = now, provider = cfg.provider.id.id, model = cfg.model))
+        db.messages().insert(MessageEntity(id = newId(), conversationId = cid, role = "user", blocks = BlocksJson.encode(listOf(ContentBlock.Text(prompt))), createdAt = now))
+        loop(cid, cfg)
+        val last = db.messages().list(cid).lastOrNull { it.role == "assistant" }
+        if (last?.status == "error") throw IllegalStateException(last.error ?: "执行失败")
+        return cid to (last?.let { plainTextOf(it) }.orEmpty())
     }
 
     fun plainTextOf(m: MessageEntity) = BlocksJson.decode(m.blocks).plainText()

@@ -56,10 +56,10 @@ data class NeonColors(
     val accent: Color,
     /** text/icon on [accent] */
     val onAccent: Color,
-    /** active chip fill (ink in light, 12% lime in dark) */
+    /** active chip fill (light blue in light, 12% lime in dark) */
     val chipActive: Color,
     val onChipActive: Color,
-    /** active chip edge (none in light, 40% lime in dark) */
+    /** active chip edge (blue hairline in light, 40% lime in dark) */
     val chipActiveBorder: Color,
     /** the little "connected" dot */
     val live: Color,
@@ -93,9 +93,9 @@ val LightNeonColors = NeonColors(
     inkTertiary = Color(0xFFA3A5AA),
     accent = Color(0xFF101113),
     onAccent = Color(0xFFFFFFFF),
-    chipActive = Color(0xFF101113),
-    onChipActive = Color(0xFFFFFFFF),
-    chipActiveBorder = Color(0x00000000),
+    chipActive = Color(0xFFE4EEFF),
+    onChipActive = Color(0xFF1B5FD9),
+    chipActiveBorder = Color(0xFFC3D6FA),
     live = Color(0xFF2E9E5B),
     danger = Color(0xFFE5484D),
     dangerSoft = Color(0xFFFCEDEC),

@@ -81,7 +81,7 @@ import com.qigai.neon.voice.VoiceState
 import kotlinx.coroutines.launch
 
 @Composable
-fun ChatScreen(vm: MainViewModel, openSheet: (SheetKind?) -> Unit, onOpenSettings: () -> Unit) {
+fun ChatScreen(vm: MainViewModel, openSheet: (SheetKind?) -> Unit, onOpenSettings: () -> Unit, onNavigate: (String) -> Unit = {}) {
     val c = Neon.colors
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -97,6 +97,7 @@ fun ChatScreen(vm: MainViewModel, openSheet: (SheetKind?) -> Unit, onOpenSetting
     val deepThink by vm.deepThink.collectAsState()
     val voice by vm.voice.state.collectAsState()
     val currentId by vm.currentId.collectAsState()
+    val skillDocs by vm.c.skills.skills.collectAsState()
 
     var input by rememberSaveable { mutableStateOf("") }
     var palette by remember { mutableStateOf(false) }
@@ -114,7 +115,7 @@ fun ChatScreen(vm: MainViewModel, openSheet: (SheetKind?) -> Unit, onOpenSetting
     val modelLabel = if (provider == null) null else {
         val id = vm.modelFor(provider, s)
         val name = models.lists[provider]?.firstOrNull { it.id == id }?.name ?: id
-        "${provider.label} · $name"
+        name
     }
 
     ModalNavigationDrawer(
@@ -134,6 +135,7 @@ fun ChatScreen(vm: MainViewModel, openSheet: (SheetKind?) -> Unit, onOpenSetting
                     onAuthorizeDrive = authorizeDrive,
                     onOpenConversation = { vm.open(it); scope.launch { drawer.close() } },
                     onNewChat = { vm.newChat(); scope.launch { drawer.close() } },
+                    onNavigate = { r -> scope.launch { drawer.close() }; onNavigate(r) },
                 )
             }
         },
@@ -160,12 +162,15 @@ fun ChatScreen(vm: MainViewModel, openSheet: (SheetKind?) -> Unit, onOpenSetting
             },
             onVoiceCancel = { vm.voice.cancel() },
             onVoiceConfirm = { vm.voice.confirm() },
-            onPlus = { vm.toast("附件上传将在后续版本提供") },
+            onPlus = { vm.toast("暂不支持附件") },
             onSend = {
                 if (provider == null) openSheet(SheetKind.CONNECT_DEEPSEEK)
                 else if (vm.send(input)) { input = ""; palette = false }
             },
             onStop = { vm.stop() },
+            skills = skillDocs.map { d -> PaletteSkill(d.name, d.command.removePrefix("/"), com.qigai.neon.ui.icons.Lucide.Sparkles) },
+            hands = s.handsEnabled,
+            onHands = { on -> scope.launch { vm.c.settings.put(com.qigai.neon.data.SettingsRepository.HANDS, if (on) "1" else "0") } },
         )
     }
 }
@@ -295,7 +300,7 @@ private fun ListeningOrb(v: VoiceState) {
         BlobLogo(60.dp, Modifier.padding(4.dp).size((60 + pulse * 10).dp))
         Spacer(Modifier.height(8.dp))
         Text(
-            if (v.transcribing) "正在转写…" else "正在听… " + v.engine.ifBlank { "普通话" },
+            if (v.transcribing) "正在转写…" else "正在听",
             style = NeonType.label().copy(color = Neon.colors.inkSecondary),
         )
     }
@@ -321,14 +326,12 @@ private fun ChatEmpty(configured: Boolean, onDeepSeek: () -> Unit, onGo: () -> U
                 }
             }
         } else {
-            Text("连接一个模型开始对话", style = NeonType.headline().copy(fontFamily = Neon.fonts.regular), textAlign = TextAlign.Center)
-            Spacer(Modifier.height(6.dp))
-            Text("Key 只存在本机 Keystore，不进对话、日志或 Drive", style = NeonType.caption().copy(color = c.inkTertiary), textAlign = TextAlign.Center)
+            Text("连接模型", style = NeonType.headline().copy(fontFamily = Neon.fonts.regular), textAlign = TextAlign.Center)
             Spacer(Modifier.height(22.dp))
             NeonCard(padding = PaddingValues(0.dp)) {
-                ConnectRow(Lucide.KeyRound, "DeepSeek", "官方接口 · 深度思考 · 流式", "连接", onDeepSeek)
+                ConnectRow(Lucide.KeyRound, "DeepSeek", "官方 API", "连接", onDeepSeek)
                 Box(Modifier.padding(start = 64.dp).fillMaxWidth().height(1.dp).background(c.borderCard))
-                ConnectRow(Lucide.FileJson, "OpenCode Go", "粘贴 Key 或导入 auth.json", "导入", onGo)
+                ConnectRow(Lucide.FileJson, "OpenCode Go", "订阅", "导入", onGo)
             }
         }
     }

@@ -15,14 +15,27 @@ android {
         applicationId = "com.qigai.neon"
         minSdk = 26
         targetSdk = 35
-        versionCode = (System.getenv("NEON_VERSION_CODE") ?: "300").toInt()
-        versionName = "0.3.0"
+        versionCode = (System.getenv("NEON_VERSION_CODE")?.toIntOrNull()) ?: 301
+        versionName = (System.getenv("NEON_VERSION_NAME") ?: "0.3.1").removePrefix("v")
         ndk { abiFilters += "arm64-v8a" }
+    }
+
+    signingConfigs {
+        val ks = System.getenv("NEON_KEYSTORE_PATH")
+        if (!ks.isNullOrBlank() && file(ks).exists()) {
+            create("release") {
+                storeFile = file(ks)
+                storePassword = System.getenv("NEON_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("NEON_KEY_ALIAS")
+                keyPassword = System.getenv("NEON_KEY_PASSWORD") ?: System.getenv("NEON_KEYSTORE_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     compileOptions {
@@ -45,6 +58,7 @@ android {
         }
     }
     packaging {
+        jniLibs.useLegacyPackaging = true
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "/META-INF/versions/9/previous-compilation-data.bin")
     }
 }
@@ -82,6 +96,8 @@ dependencies {
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("com.google.android.gms:play-services-auth:21.3.0")
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 
     // UI snapshots of every screen, light + dark (Robolectric native graphics + Roborazzi)
     testImplementation("junit:junit:4.13.2")

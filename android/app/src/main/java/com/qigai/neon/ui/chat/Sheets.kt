@@ -235,11 +235,11 @@ private fun ConnectDeepSeek(vm: MainViewModel, done: () -> Unit) {
 
 @Composable
 fun ConnectDeepSeekContent(key: String, onKey: (String) -> Unit, busy: Boolean, error: String?, onGetKey: () -> Unit, onSave: () -> Unit) {
-    SheetHeader(Lucide.KeyRound, "连接 DeepSeek", "api.deepseek.com · Anthropic 兼容接口")
+    SheetHeader(Lucide.KeyRound, "连接 DeepSeek", "api.deepseek.com")
     Spacer(Modifier.height(20.dp))
     NeonField(key, onKey, "sk-…", secret = true)
     error?.let { Text(it, style = NeonType.caption().copy(color = Neon.colors.danger), modifier = Modifier.padding(top = 8.dp)) }
-    Fineprint("Key 只存在本机 Android Keystore，不会进入对话、日志或 Drive")
+    Fineprint("Key 加密保存在本机")
     Spacer(Modifier.height(20.dp))
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         PillButton("获取 Key", kind = ButtonKind.Secondary, icon = Lucide.ArrowUpRight, height = 44.dp, modifier = Modifier.weight(1f), onClick = onGetKey)
@@ -262,11 +262,11 @@ private fun ConnectGo(vm: MainViewModel, done: () -> Unit) {
             if (text.isBlank()) err = "读取文件失败"
         }
     }
-    SheetHeader(Lucide.FileJson, "导入 OpenCode Go", "直连 opencode.ai · 无需代理")
+    SheetHeader(Lucide.FileJson, "导入 OpenCode Go", "opencode.ai")
     Spacer(Modifier.height(20.dp))
     NeonField(text, { text = it; err = null }, "粘贴 Key 或 auth.json 内容", minLines = 3)
     err?.let { Text(it, style = NeonType.caption().copy(color = Neon.colors.danger), modifier = Modifier.padding(top = 8.dp)) }
-    Fineprint("保存前用额度接口校验，不产生费用。auth.json 在 ~/.local/share/opencode/")
+    Fineprint("auth.json 在 ~/.local/share/opencode")
     Spacer(Modifier.height(20.dp))
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         NeonChip("选择文件", style = ChipStyle.Outline, icon = Lucide.Folder, height = 40.dp) {

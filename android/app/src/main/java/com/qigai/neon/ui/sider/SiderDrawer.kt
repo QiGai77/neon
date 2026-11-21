@@ -1,5 +1,6 @@
 package com.qigai.neon.ui.sider
 
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.border
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -96,8 +97,15 @@ fun SiderDrawer(
     onAuthorizeDrive: () -> Unit,
     onOpenConversation: (String) -> Unit,
     onNewChat: () -> Unit,
+    onNavigate: (String) -> Unit = {},
 ) {
     val ctx = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val sbStatus by vm.c.rootfs.status.collectAsState()
+    val skillsN by vm.c.skills.skills.collectAsState()
+    val memN by vm.c.memory.items.collectAsState()
+    val connN by vm.c.db.connectorDao().observeAll().collectAsState(initial = emptyList())
+    val tasksN by vm.c.db.scheduledTaskDao().observeAll().collectAsState(initial = emptyList())
     val convs by vm.conversations.collectAsState()
     val current by vm.currentId.collectAsState()
     val s by vm.settings.collectAsState()
@@ -121,6 +129,21 @@ fun SiderDrawer(
         onNewChat = onNewChat,
         onRename = { renaming = it },
         onDelete = { deleting = it },
+        sandbox = when (val st = sbStatus) {
+            is com.qigai.neon.sandbox.SandboxStatus.Ready -> SandboxUi("Alpine ${st.arch}", true, detail = if (st.pythonAvailable) "Python 3" else "/workspace")
+            is com.qigai.neon.sandbox.SandboxStatus.Extracting -> SandboxUi("Alpine", false, 0.5f, st.detail)
+            is com.qigai.neon.sandbox.SandboxStatus.MissingBundle -> SandboxUi("Alpine", false, 0f, st.reason)
+            is com.qigai.neon.sandbox.SandboxStatus.Error -> SandboxUi("Alpine", false, 0f, st.message)
+            com.qigai.neon.sandbox.SandboxStatus.Checking -> SandboxUi("Alpine", false, 0f, "检查中")
+        },
+        hubs = HubCounts(
+            connectors = connN.count { it.status == "connected" } + (if (s.workspaceConnected) 1 else 0),
+            skills = skillsN.size, memories = memN.size, runningTasks = tasksN.count { it.enabled },
+        ),
+        onOpenSandbox = { onNavigate("sandbox") },
+        onOpenHub = { h -> onNavigate(when (h) { Hub.CONNECTORS -> "connectors"; Hub.SKILLS -> "skills"; Hub.MEMORY, Hub.TASKS -> "memory" }) },
+        cards = s.drawerCards,
+        onCardsChange = { list -> scope.launch { vm.c.settings.put(com.qigai.neon.data.SettingsRepository.DRAWER_CARDS, list.joinToString(",")) } },
     )
     val c = Neon.colors
     renaming?.let { conv ->
@@ -172,8 +195,12 @@ fun SiderContent(
     hubs: HubCounts? = null,
     onOpenSandbox: () -> Unit = {},
     onOpenHub: (Hub) -> Unit = {},
+    cards: List<String> = listOf("quota", "sandbox", "drive", "hubs"),
+    onCardsChange: (List<String>) -> Unit = {},
+    startEditing: Boolean = false,
 ) {
     val c = Neon.colors
+    var editing by remember { mutableStateOf(startEditing) }
     Column(Modifier.fillMaxSize().background(c.bgDrawer).statusBarsPadding().navigationBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 6.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             BlobLogo(26.dp)
@@ -182,6 +209,8 @@ fun SiderContent(
             Spacer(Modifier.width(8.dp))
             Text("v$version", style = NeonType.mono().copy(color = c.inkTertiary), modifier = Modifier.padding(top = 4.dp))
             Spacer(Modifier.weight(1f))
+            if (editing) NeonChip("完成", style = ChipStyle.Active, height = 30.dp, onClick = { editing = false })
+            else IconBtn(Lucide.SlidersHorizontal, "编辑卡片", tint = c.inkSecondary, onClick = { editing = true })
             IconBtn(Lucide.Settings, "设置", tint = c.inkSecondary, onClick = onOpenSettings)
         }
         LazyColumn(
@@ -189,10 +218,26 @@ fun SiderContent(
             contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            item(key = "quota") { QuotaCard(quota, onRefreshQuota, onConnectGo) }
-            if (sandbox != null) item(key = "sandbox") { SandboxCard(sandbox, onOpenSandbox) }
-            item(key = "drive") { DriveCard(drive, onAuthorizeDrive, onDriveSync, onOpenFolder) }
-            if (hubs != null) item(key = "hubs") { HubGrid(hubs, onOpenHub) }
+            cards.forEach { id ->
+                val body: (@Composable () -> Unit)? = when (id) {
+                    "quota" -> { { QuotaCard(quota, onRefreshQuota, onConnectGo) } }
+                    "sandbox" -> sandbox?.let { sb -> { SandboxCard(sb, onOpenSandbox) } }
+                    "drive" -> { { DriveCard(drive, onAuthorizeDrive, onDriveSync, onOpenFolder) } }
+                    "hubs" -> hubs?.let { h -> { HubGrid(h, onOpenHub) } }
+                    else -> null
+                }
+                if (body != null) item(key = "card-$id") {
+                    EditableCard(editing, onRemove = { onCardsChange(cards - id) }) { body() }
+                }
+            }
+            val hidden = CARD_NAMES.keys.filter { it !in cards && (it != "sandbox" || sandbox != null) && (it != "hubs" || hubs != null) }
+            if (editing && hidden.isNotEmpty()) item(key = "addCards") {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    hidden.forEach { id ->
+                        NeonChip(CARD_NAMES.getValue(id), style = ChipStyle.Outline, icon = Lucide.Plus, height = 32.dp, onClick = { onCardsChange(cards + id) })
+                    }
+                }
+            }
             item(key = "convHead") {
                 Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     SectionLabel("最近对话", Modifier.weight(1f), trailing = if (conversations.isEmpty()) null else "${conversations.size}")
@@ -203,8 +248,6 @@ fun SiderContent(
             if (conversations.isEmpty()) item(key = "convEmpty") {
                 NeonCard(padding = PaddingValues(18.dp)) {
                     Text("还没有对话", style = NeonType.item())
-                    Spacer(Modifier.height(2.dp))
-                    Text("发出第一条消息后保存在本机，连接 Drive 后自动备份", style = NeonType.caption().copy(color = c.inkTertiary))
                 }
             } else item(key = "convList") {
                 NeonCard(padding = PaddingValues(vertical = 6.dp)) {
@@ -224,7 +267,6 @@ fun SiderContent(
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(email?.substringBefore('@') ?: "本机模式", style = NeonType.bodyMedium().copy(fontFamily = Neon.fonts.regular), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (email == null) Text("未连接 Google", style = NeonType.caption().copy(color = c.inkTertiary))
             }
             IconBtn(Lucide.SlidersHorizontal, "设置", tint = c.inkSecondary, onClick = onOpenSettings)
         }
@@ -301,7 +343,7 @@ private fun QuotaCard(q: QuotaState, onRefresh: () -> Unit, onConnectGo: () -> U
         Column(Modifier.padding(end = 8.dp)) {
             when (q) {
                 QuotaState.NotConfigured -> {
-                    Text("导入 Go Key 后显示 5 小时、本周、本月的真实用量", style = NeonType.caption())
+                    Text("导入 Key 后显示用量", style = NeonType.caption())
                     Spacer(Modifier.height(14.dp))
                     PillButton("导入订阅", icon = Lucide.FileJson, height = 36.dp, onClick = onConnectGo)
                 }
@@ -316,8 +358,6 @@ private fun QuotaCard(q: QuotaState, onRefresh: () -> Unit, onConnectGo: () -> U
                 }
                 is QuotaState.Ok -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        NeonChip("直连无代理", style = ChipStyle.Active, icon = Lucide.Check, height = 26.dp)
-                        Spacer(Modifier.width(10.dp))
                         Text("更新于 " + SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(q.usage.fetchedAt)), style = NeonType.tnum(NeonType.caption().copy(color = c.inkTertiary)))
                     }
                     Spacer(Modifier.height(16.dp))
@@ -388,10 +428,8 @@ private fun DriveCard(d: DriveUi, onAuthorize: () -> Unit, onSync: () -> Unit, o
             IconSquircle(Lucide.HardDrive, size = 34.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("Google Drive 工作区", style = NeonType.cardTitle())
-                Spacer(Modifier.height(4.dp))
-                if (d.connected) NeonChip(d.email ?: "已授权", style = ChipStyle.Soft, icon = Lucide.Check, height = 24.dp)
-                else Text("只申请 drive.file，看不到你的其他文件", style = NeonType.caption())
+                Text("Google Drive", style = NeonType.cardTitle())
+                if (d.connected) { Spacer(Modifier.height(4.dp)); NeonChip(d.email ?: "已授权", style = ChipStyle.Soft, icon = Lucide.Check, height = 24.dp) }
             }
             if (d.busy) CircularProgressIndicator(Modifier.padding(top = 4.dp).size(16.dp), strokeWidth = 1.75.dp, color = c.inkSecondary)
         }
@@ -400,7 +438,7 @@ private fun DriveCard(d: DriveUi, onAuthorize: () -> Unit, onSync: () -> Unit, o
             d.error?.let { Text(it, style = NeonType.caption().copy(color = c.danger)); Spacer(Modifier.height(10.dp)) }
             PillButton("授权 Google Drive", icon = Lucide.Link, height = 36.dp, enabled = !d.busy, onClick = onAuthorize)
         } else {
-            Text("我的云端硬盘 / Neon /", style = NeonType.caption().copy(color = c.inkTertiary))
+            Text("Neon", style = NeonType.caption().copy(color = c.inkTertiary))
             Spacer(Modifier.height(8.dp))
             DriveClient.SUBFOLDERS.chunked(3).forEach { row ->
                 Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -468,12 +506,12 @@ private fun SandboxCard(s: SandboxUi, onOpen: () -> Unit) {
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("离线 Linux 沙箱", style = NeonType.cardTitle().copy(fontSize = 16.sp), modifier = Modifier.weight(1f))
+                    Text("Linux 沙箱", style = NeonType.cardTitle().copy(fontSize = 16.sp), modifier = Modifier.weight(1f))
                     Text("PRoot", style = NeonType.mono().copy(color = c.inkTertiary))
                 }
                 Spacer(Modifier.height(6.dp))
                 NeonChip(
-                    if (s.ready) "${s.distro} · 离线就绪" else "${s.distro} · 解压中 ${(s.progress * 100).toInt()}%",
+                    if (s.ready) s.distro else "解压中 ${(s.progress * 100).toInt()}%",
                     style = if (s.ready) ChipStyle.Active else ChipStyle.Soft, height = 28.dp,
                 )
             }
@@ -487,12 +525,12 @@ private fun SandboxCard(s: SandboxUi, onOpen: () -> Unit) {
 private fun HubGrid(h: HubCounts, onOpen: (Hub) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HubTile(Lucide.Plug, "连接器中心", "${h.connectors} 个已连接", Modifier.weight(1f)) { onOpen(Hub.CONNECTORS) }
-            HubTile(Lucide.Book, "技能库", "${h.skills} 个技能", Modifier.weight(1f)) { onOpen(Hub.SKILLS) }
+            HubTile(Lucide.Plug, "连接器", "${h.connectors}", Modifier.weight(1f)) { onOpen(Hub.CONNECTORS) }
+            HubTile(Lucide.Book, "技能库", "${h.skills}", Modifier.weight(1f)) { onOpen(Hub.SKILLS) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HubTile(Lucide.Bookmark, "长期记忆", "${h.memories} 条记忆", Modifier.weight(1f)) { onOpen(Hub.MEMORY) }
-            HubTile(Lucide.CalendarClock, "定时任务", "${h.runningTasks} 个运行中", Modifier.weight(1f)) { onOpen(Hub.TASKS) }
+            HubTile(Lucide.Bookmark, "记忆", "${h.memories}", Modifier.weight(1f)) { onOpen(Hub.MEMORY) }
+            HubTile(Lucide.CalendarClock, "定时任务", "${h.runningTasks}", Modifier.weight(1f)) { onOpen(Hub.TASKS) }
         }
     }
 }
@@ -511,5 +549,21 @@ private fun HubTile(icon: ImageVector, title: String, meta: String, modifier: Mo
         }
         Spacer(Modifier.height(12.dp))
         Text(title, style = NeonType.item().copy(fontSize = 15.5.sp), maxLines = 1)
+    }
+}
+
+
+private val CARD_NAMES = linkedMapOf("quota" to "额度", "sandbox" to "沙箱", "drive" to "Drive", "hubs" to "入口")
+
+/** Wraps a drawer card; in edit mode shows a remove badge and a slight wobble-free inset. */
+@Composable
+private fun EditableCard(editing: Boolean, onRemove: () -> Unit, content: @Composable () -> Unit) {
+    val c = Neon.colors
+    Box {
+        Box(Modifier.padding(top = if (editing) 6.dp else 0.dp, end = if (editing) 6.dp else 0.dp)) { content() }
+        if (editing) Box(
+            Modifier.align(Alignment.TopEnd).size(24.dp).clip(NeonShapes.capsule).background(c.danger).clickable(onClick = onRemove),
+            contentAlignment = Alignment.Center,
+        ) { Icon(Lucide.Minus, "移除", Modifier.size(14.dp), tint = androidx.compose.ui.graphics.Color.White) }
     }
 }

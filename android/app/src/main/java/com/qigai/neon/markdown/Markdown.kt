@@ -45,7 +45,7 @@ import com.qigai.neon.ui.theme.Neon
 import com.qigai.neon.ui.theme.NeonShapes
 import com.qigai.neon.ui.theme.NeonType
 
-/** Markdown blocks (GFM subset). LaTeX is shown as raw source in a math box (no TeX layout engine in M1). */
+/** Markdown blocks (GFM subset). LaTeX is shown as raw source in a math box. */
 sealed class MdBlock {
     data class Heading(val level: Int, val text: String) : MdBlock()
     data class Paragraph(val text: String) : MdBlock()

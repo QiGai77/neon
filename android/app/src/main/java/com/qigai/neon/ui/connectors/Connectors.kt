@@ -120,13 +120,6 @@ fun ConnectorsContent(
             contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 2.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            item(key = "note") {
-                Row(Modifier.padding(start = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Lucide.Lock, null, Modifier.size(14.dp), tint = c.inkSecondary)
-                    Spacer(Modifier.width(6.dp))
-                    Text("凭证加密隔离 · Keystore 加密，每个连接器独立隔离", style = NeonType.caption().copy(fontSize = 13.sp))
-                }
-            }
             ConnectorGroup.entries.forEach { g ->
                 val rows = connectors.filter { it.group == g }
                 if (rows.isEmpty()) return@forEach
