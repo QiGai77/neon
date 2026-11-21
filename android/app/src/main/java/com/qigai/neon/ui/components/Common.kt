@@ -109,8 +109,8 @@ fun NeonChip(
     mono: Boolean = false,
     height: Dp = 32.dp,
     textColor: Color? = null,
-    onClick: (() -> Unit)? = null,
     trailing: @Composable (RowScope.() -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
 ) {
     val c = Neon.colors
     val bg by animateColorAsState(
