@@ -7,6 +7,14 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -54,11 +62,18 @@ fun NeonRoot(vm: MainViewModel) {
     LaunchedEffect(toast) {
         toast?.let { Toast.makeText(ctx, it, Toast.LENGTH_SHORT).show(); vm.toast(null) }
     }
-    NavHost(nav, startDestination = "chat") {
-        composable("chat") { ChatScreen(vm, openSheet = { sheet = it }, onOpenSettings = { nav.navigate("settings") }) }
-        composable("settings") { SettingsScreen(vm, openSheet = { sheet = it }, onBack = { nav.popBackStack() }) }
+    NeonSheets(vm, sheet, { sheet = it }) {
+        NavHost(
+            nav, startDestination = "chat",
+            enterTransition = { slideInHorizontally(spring(0.9f, 420f)) { it / 5 } + fadeIn(tween(180)) },
+            exitTransition = { fadeOut(tween(140)) + scaleOut(targetScale = 0.97f) },
+            popEnterTransition = { fadeIn(tween(180)) + scaleIn(initialScale = 0.97f) },
+            popExitTransition = { slideOutHorizontally(spring(0.9f, 420f)) { it / 5 } + fadeOut(tween(140)) },
+        ) {
+            composable("chat") { ChatScreen(vm, openSheet = { sheet = it }, onOpenSettings = { nav.navigate("settings") }) }
+            composable("settings") { SettingsScreen(vm, openSheet = { sheet = it }, onBack = { nav.popBackStack() }) }
+        }
     }
-    NeonSheets(vm, sheet) { sheet = it }
 }
 
 @Suppress("unused")

@@ -1,0 +1,41 @@
+name: UI snapshots + debug APK
+
+on:
+  push:
+    branches: ['ui/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Record screenshots (Robolectric + Roborazzi, 390×844 dp)
+        working-directory: android
+        run: gradle :app:recordRoborazziDebug --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: android/app/build/outputs/roborazzi/*.png
+          retention-days: 14
+      - name: Build installable debug APK
+        working-directory: android
+        env:
+          NEON_VERSION_CODE: '301'
+        run: gradle :app:assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neon-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14

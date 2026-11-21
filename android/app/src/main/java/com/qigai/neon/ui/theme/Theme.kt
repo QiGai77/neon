@@ -2,6 +2,8 @@ package com.qigai.neon.ui.theme
 
 import android.content.Context
 import android.os.Build
+import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,74 +21,148 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.qigai.neon.R
 
-/** Design tokens — v0.3.0 native spec (warm paper light default, pure dark). */
+/**
+ * Neon v0.3 design tokens, sampled from the v2 concept boards (390×844 dp).
+ *
+ * Light: warm paper + ink. The "accent" in light IS ink — no colour shouts.
+ * Dark : near-black + one lime (#DFF84B). Lime only marks what is live/active.
+ */
 @Immutable
 data class NeonColors(
+    /** screen background */
     val bgCanvas: Color,
+    /** drawer / side sheet background */
+    val bgDrawer: Color,
+    /** cards, composer, sheets */
     val bgSurface: Color,
+    /** pills, icon squircles, inactive chips, rails */
     val bgSubtle: Color,
+    /** tiles that sit inside a surface card */
+    val bgTile: Color,
+    val userBubble: Color,
+    /** chip / button outlines, rules */
     val borderHairline: Color,
+    /** the 1dp edge of a card */
+    val borderCard: Color,
     val inkPrimary: Color,
     val inkSecondary: Color,
-    val neonLime: Color,
+    val inkTertiary: Color,
+    /** active fill: ink in light, lime in dark */
+    val accent: Color,
+    /** text/icon on [accent] */
+    val onAccent: Color,
+    /** active chip fill (ink in light, 12% lime in dark) */
+    val chipActive: Color,
+    val onChipActive: Color,
+    /** active chip edge (none in light, 40% lime in dark) */
+    val chipActiveBorder: Color,
+    /** the little "connected" dot */
+    val live: Color,
     val danger: Color,
     val dangerSoft: Color,
-    val warnAmber: Color,
-    val warnSoft: Color,
+    val warn: Color,
     val terminalBg: Color,
-    /** text/icon drawn on top of inkPrimary fills */
-    val onInk: Color,
+    val terminalInk: Color,
+    val terminalDim: Color,
+    val lime: Color,
+    val scrim: Color,
+    val shadow: Color,
     val isDark: Boolean,
-)
+) {
+    // compatibility aliases used by older call sites (markdown)
+    val onInk: Color get() = onAccent
+    val neonLime: Color get() = live
+}
 
 val LightNeonColors = NeonColors(
-    bgCanvas = Color(0xFFF5F4F0),
+    bgCanvas = Color(0xFFF4F3EE),
+    bgDrawer = Color(0xFFEFEEE8),
     bgSurface = Color(0xFFFFFFFF),
-    bgSubtle = Color(0xFFEFECE6),
-    borderHairline = Color(0xFFE6E3DC),
-    inkPrimary = Color(0xFF141416),
-    inkSecondary = Color(0xFF6B6964),
-    neonLime = Color(0xFF84CC16),
-    danger = Color(0xFFDC2626),
-    dangerSoft = Color(0xFFFEF2F2),
-    warnAmber = Color(0xFFF59E0B),
-    warnSoft = Color(0xFFFFFBEB),
-    terminalBg = Color(0xFF111214),
-    onInk = Color(0xFFF5F4F0),
+    bgSubtle = Color(0xFFECEAE3),
+    bgTile = Color(0xFFF4F3EE),
+    userBubble = Color(0xFFE9E7E0),
+    borderHairline = Color(0xFFD6D3CA),
+    borderCard = Color(0xFFE4E2DB),
+    inkPrimary = Color(0xFF101113),
+    inkSecondary = Color(0xFF6B6F76),
+    inkTertiary = Color(0xFFA3A5AA),
+    accent = Color(0xFF101113),
+    onAccent = Color(0xFFFFFFFF),
+    chipActive = Color(0xFF101113),
+    onChipActive = Color(0xFFFFFFFF),
+    chipActiveBorder = Color(0x00000000),
+    live = Color(0xFF2E9E5B),
+    danger = Color(0xFFE5484D),
+    dangerSoft = Color(0xFFFCEDEC),
+    warn = Color(0xFFF08A24),
+    terminalBg = Color(0xFF141415),
+    terminalInk = Color(0xFFE9E8E3),
+    terminalDim = Color(0xFF7D7C79),
+    lime = Color(0xFFDFF84B),
+    scrim = Color(0x66101113),
+    shadow = Color(0xFF3B3523),
     isDark = false,
 )
 
 val DarkNeonColors = NeonColors(
-    bgCanvas = Color(0xFF121213),
-    bgSurface = Color(0xFF1C1C1E),
-    bgSubtle = Color(0xFF262629),
-    borderHairline = Color(0xFF323236),
-    inkPrimary = Color(0xFFEAEAE6),
-    inkSecondary = Color(0xFF9A9891),
-    neonLime = Color(0xFFA3E635),
-    danger = Color(0xFFF87171),
-    dangerSoft = Color(0xFF3A1B1B),
-    warnAmber = Color(0xFFFBBF24),
-    warnSoft = Color(0xFF332712),
-    terminalBg = Color(0xFF0B0C0E),
-    onInk = Color(0xFF121213),
+    bgCanvas = Color(0xFF0B0B0C),
+    bgDrawer = Color(0xFF0D0D16),
+    bgSurface = Color(0xFF161616),
+    bgSubtle = Color(0xFF222224),
+    bgTile = Color(0xFF222224),
+    userBubble = Color(0xFF1F1F21),
+    borderHairline = Color(0xFF2E2E31),
+    borderCard = Color(0xFF232325),
+    inkPrimary = Color(0xFFF2F1EC),
+    inkSecondary = Color(0xFF8A8A8E),
+    inkTertiary = Color(0xFF5E5E63),
+    accent = Color(0xFFDFF84B),
+    onAccent = Color(0xFF0B0B0C),
+    chipActive = Color(0xFF2B2D1C),
+    onChipActive = Color(0xFFDFF84B),
+    chipActiveBorder = Color(0x80B7CC3E),
+    live = Color(0xFFDFF84B),
+    danger = Color(0xFFFF6B6B),
+    dangerSoft = Color(0xFF2A1616),
+    warn = Color(0xFFF59A3A),
+    terminalBg = Color(0xFF111112),
+    terminalInk = Color(0xFFE9E8E3),
+    terminalDim = Color(0xFF6E6D6A),
+    lime = Color(0xFFDFF84B),
+    scrim = Color(0xCC000000),
+    shadow = Color(0xFF000000),
     isDark = true,
 )
 
-/** Lime used on terminal (dark) surfaces in both themes. */
-val TerminalLime = Color(0xFFA3E635)
-
 object NeonShapes {
     val sheet = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-    val composer = RoundedCornerShape(24.dp)
+    val composer = RoundedCornerShape(28.dp)
     val card = RoundedCornerShape(20.dp)
-    val item = RoundedCornerShape(14.dp)
+    val tile = RoundedCornerShape(16.dp)
+    val item = RoundedCornerShape(12.dp)
+    val squircle = RoundedCornerShape(14.dp)
+    val small = RoundedCornerShape(10.dp)
     val capsule = CircleShape
-    val userBubble = RoundedCornerShape(topStart = 20.dp, topEnd = 6.dp, bottomEnd = 20.dp, bottomStart = 20.dp)
+    val userBubble = RoundedCornerShape(22.dp)
+    val terminal = RoundedCornerShape(18.dp)
+}
+
+/** Motion riffs (concept sheet "Neon · Motion Riffs"): springs as (dampingRatio, stiffness). */
+object NeonMotion {
+    fun <T> thinking(): FiniteAnimationSpec<T> = spring(0.82f, 340f)
+    fun <T> composer(): FiniteAnimationSpec<T> = spring(0.78f, 420f)
+    fun <T> palette(): FiniteAnimationSpec<T> = spring(0.82f, 400f)
+    fun <T> sheet(): FiniteAnimationSpec<T> = spring(0.85f, 380f)
+    fun <T> terminal(): FiniteAnimationSpec<T> = spring(0.85f, 360f)
+    fun <T> receipt(): FiniteAnimationSpec<T> = spring(0.76f, 380f)
+    const val STAGGER_MS = 30
+    const val RING_MS = 520
+    const val RING_STAGGER_MS = 60
 }
 
 @Immutable
@@ -145,16 +221,35 @@ object Neon {
     val fonts: NeonFonts @Composable get() = LocalNeonFonts.current
 }
 
-/** Text styles. Numbers that count (time / quota / counters) use [tnum]. */
+/**
+ * Type scale (sp), measured off the 2× concept boards.
+ * Chinese reads best a touch lighter and roomier than Latin, so body sits at 16/26.
+ */
 object NeonType {
-    @Composable fun title() = TextStyle(fontFamily = Neon.fonts.medium, fontSize = 18.sp, color = Neon.colors.inkPrimary)
-    @Composable fun headline() = TextStyle(fontFamily = Neon.fonts.medium, fontSize = 22.sp, color = Neon.colors.inkPrimary)
-    @Composable fun body() = TextStyle(fontFamily = Neon.fonts.regular, fontSize = 16.sp, lineHeight = 26.sp, color = Neon.colors.inkPrimary)
-    @Composable fun bodyMedium() = TextStyle(fontFamily = Neon.fonts.medium, fontSize = 16.sp, lineHeight = 24.sp, color = Neon.colors.inkPrimary)
-    @Composable fun label() = TextStyle(fontFamily = Neon.fonts.regular, fontSize = 14.sp, lineHeight = 20.sp, color = Neon.colors.inkPrimary)
-    @Composable fun secondary() = TextStyle(fontFamily = Neon.fonts.light, fontSize = 14.sp, lineHeight = 20.sp, color = Neon.colors.inkSecondary)
-    @Composable fun caption() = TextStyle(fontFamily = Neon.fonts.regular, fontSize = 12.sp, lineHeight = 16.sp, color = Neon.colors.inkSecondary)
-    @Composable fun code() = TextStyle(fontFamily = Neon.fonts.code, fontSize = 13.sp, lineHeight = 20.sp, color = Neon.colors.inkPrimary)
+    private fun s(f: FontFamily, size: TextUnit, line: TextUnit, color: Color) =
+        TextStyle(fontFamily = f, fontSize = size, lineHeight = line, color = color)
+
+    /** drawer brand "Neon" */
+    @Composable fun brand() = s(Neon.fonts.medium, 22.sp, 28.sp, Neon.colors.inkPrimary).copy(letterSpacing = (-0.2).sp)
+    /** sheet / page headline */
+    @Composable fun headline() = s(Neon.fonts.medium, 20.sp, 28.sp, Neon.colors.inkPrimary)
+    /** top bar title */
+    @Composable fun title() = s(Neon.fonts.regular, 17.sp, 24.sp, Neon.colors.inkPrimary)
+    /** card title */
+    @Composable fun cardTitle() = s(Neon.fonts.regular, 15.5.sp, 22.sp, Neon.colors.inkPrimary)
+    @Composable fun body() = s(Neon.fonts.regular, 16.sp, 26.sp, Neon.colors.inkPrimary)
+    @Composable fun bodyMedium() = s(Neon.fonts.medium, 16.sp, 24.sp, Neon.colors.inkPrimary)
+    /** list item primary */
+    @Composable fun item() = s(Neon.fonts.regular, 15.sp, 21.sp, Neon.colors.inkPrimary)
+    @Composable fun label() = s(Neon.fonts.regular, 14.sp, 20.sp, Neon.colors.inkPrimary)
+    /** thinking steps, secondary prose */
+    @Composable fun secondary() = s(Neon.fonts.regular, 14.sp, 22.sp, Neon.colors.inkSecondary)
+    @Composable fun chip() = s(Neon.fonts.regular, 13.sp, 18.sp, Neon.colors.inkPrimary)
+    @Composable fun caption() = s(Neon.fonts.regular, 12.sp, 16.sp, Neon.colors.inkSecondary)
+    /** quiet section labels: "命中技能", "规划步骤" */
+    @Composable fun overline() = s(Neon.fonts.regular, 12.sp, 16.sp, Neon.colors.inkTertiary)
+    @Composable fun code() = s(Neon.fonts.code, 13.sp, 20.sp, Neon.colors.inkPrimary)
+    @Composable fun mono() = s(Neon.fonts.code, 12.sp, 16.sp, Neon.colors.inkSecondary)
     @Composable fun tnum(base: TextStyle = caption()) = base.copy(fontFeatureSettings = "tnum")
 }
 
@@ -167,22 +262,27 @@ fun NeonTheme(mode: ThemeMode, content: @Composable () -> Unit) {
         ThemeMode.DARK -> true
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
+    NeonTheme(dark, content)
+}
+
+@Composable
+fun NeonTheme(dark: Boolean, content: @Composable () -> Unit) {
     val c = if (dark) DarkNeonColors else LightNeonColors
     val ctx = LocalContext.current
     val fonts = remember { buildFonts(ctx.applicationContext) }
     val scheme = if (dark) {
         darkColorScheme(
-            primary = c.inkPrimary, onPrimary = c.onInk, background = c.bgCanvas, onBackground = c.inkPrimary,
+            primary = c.accent, onPrimary = c.onAccent, background = c.bgCanvas, onBackground = c.inkPrimary,
             surface = c.bgSurface, onSurface = c.inkPrimary, surfaceVariant = c.bgSubtle, onSurfaceVariant = c.inkSecondary,
-            outline = c.borderHairline, outlineVariant = c.borderHairline, error = c.danger, secondary = c.inkSecondary,
+            outline = c.borderHairline, outlineVariant = c.borderCard, error = c.danger, secondary = c.inkSecondary,
             surfaceContainer = c.bgSurface, surfaceContainerLow = c.bgSurface, surfaceContainerHigh = c.bgSurface,
             surfaceContainerHighest = c.bgSubtle, surfaceContainerLowest = c.bgCanvas,
         )
     } else {
         lightColorScheme(
-            primary = c.inkPrimary, onPrimary = c.onInk, background = c.bgCanvas, onBackground = c.inkPrimary,
+            primary = c.accent, onPrimary = c.onAccent, background = c.bgCanvas, onBackground = c.inkPrimary,
             surface = c.bgSurface, onSurface = c.inkPrimary, surfaceVariant = c.bgSubtle, onSurfaceVariant = c.inkSecondary,
-            outline = c.borderHairline, outlineVariant = c.borderHairline, error = c.danger, secondary = c.inkSecondary,
+            outline = c.borderHairline, outlineVariant = c.borderCard, error = c.danger, secondary = c.inkSecondary,
             surfaceContainer = c.bgSurface, surfaceContainerLow = c.bgSurface, surfaceContainerHigh = c.bgSurface,
             surfaceContainerHighest = c.bgSubtle, surfaceContainerLowest = c.bgCanvas,
         )
