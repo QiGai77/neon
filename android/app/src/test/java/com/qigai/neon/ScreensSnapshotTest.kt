@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -77,11 +79,8 @@ class ScreensSnapshotTest {
         rule.setContent {
             NeonTheme(dark = dark) {
                 Box(Modifier.fillMaxSize().background(Neon.colors.bgCanvas)) {
-                    Column(Modifier.fillMaxSize()) {
-                        FakeStatusBar()
-                        Box(Modifier.weight(1f)) { content() }
-                        Spacer(Modifier.height(20.dp))
-                    }
+                    Box(Modifier.fillMaxSize().padding(top = 44.dp, bottom = 20.dp)) { content() }
+                    FakeStatusBar()
                 }
             }
         }
@@ -224,7 +223,8 @@ class ScreensSnapshotTest {
         Box(Modifier.fillMaxSize()) {
             Chat(listOf(ask, answer, results))
             Box(Modifier.fillMaxSize().background(if (Neon.colors.isDark) Color.Black.copy(alpha = 0.62f) else Color(0xFF101113).copy(alpha = 0.26f)))
-            Box(Modifier.width(318.dp).fillMaxSize().background(Neon.colors.bgDrawer)) { Drawer() }
+            // the real drawer runs edge to edge under the status bar; mimic that inside the padded frame
+            Box(Modifier.width(318.dp).requiredHeight(844.dp).offset(y = (-12).dp).background(Neon.colors.bgDrawer).padding(top = 44.dp, bottom = 20.dp)) { Drawer() }
         }
     }
 

@@ -37,7 +37,11 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
-            all { it.systemProperty("robolectric.pixelCopyRenderMode", "hardware") }
+            all {
+                it.systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+                it.systemProperty("robolectric.conscryptMode", "OFF")
+                it.maxHeapSize = "2g"
+            }
         }
     }
     packaging {

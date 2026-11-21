@@ -232,8 +232,8 @@ fun ChatContent(
                 Modifier.fillMaxWidth().height(18.dp)
                     .background(Brush.verticalGradient(listOf(c.bgCanvas, c.bgCanvas.copy(alpha = 0f))))
             )
-            AnimatedVisibility(
-                voice.recording || voice.transcribing,
+            androidx.compose.animation.AnimatedVisibility(
+                visible = voice.recording || voice.transcribing,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp),
                 enter = fadeIn() + scaleIn(initialScale = 0.85f),
                 exit = fadeOut() + scaleOut(targetScale = 0.9f),

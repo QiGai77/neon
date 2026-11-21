@@ -10,11 +10,25 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Lucide icons (ISC License, https://lucide.dev) as Compose vectors, stroke 1.75 to match the v0.3 concepts.
- * Generated from lucide-static 0.460.0.
+ * Generated from lucide-static 0.460.0. Tint with Icon(tint=...); the stroke colour here is a placeholder.
  */
 object Lucide {
     private fun lucide(name: String, vararg paths: String, stroke: Float = 1.75f): ImageVector {
-        val ArrowLeft: ImageVector by lazy { lucide("arrow-left", "m12 19-7-7 7-7", "M19 12H5") }
+        val b = ImageVector.Builder(name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)
+        for (d in paths) {
+            b.addPath(
+                pathData = addPathNodes(d),
+                fill = null,
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = stroke,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            )
+        }
+        return b.build()
+    }
+
+    val ArrowLeft: ImageVector by lazy { lucide("arrow-left", "m12 19-7-7 7-7", "M19 12H5") }
     val ArrowUpRight: ImageVector by lazy { lucide("arrow-up-right", "M7 7h10v10", "M7 17 17 7") }
     val ArrowUp: ImageVector by lazy { lucide("arrow-up", "m5 12 7-7 7 7", "M12 19V5") }
     val Bell: ImageVector by lazy { lucide("bell", "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9", "M10.3 21a1.94 1.94 0 0 0 3.4 0") }
@@ -33,7 +47,7 @@ object Lucide {
     val Cloud: ImageVector by lazy { lucide("cloud", "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z") }
     val Copy: ImageVector by lazy { lucide("copy", "M10.0 8.0H20.0a2.0 2.0 0 0 1 2.0 2.0V20.0a2.0 2.0 0 0 1 -2.0 2.0H10.0a2.0 2.0 0 0 1 -2.0 -2.0V10.0a2.0 2.0 0 0 1 2.0 -2.0Z", "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2") }
     val Cpu: ImageVector by lazy { lucide("cpu", "M6.0 4.0H18.0a2.0 2.0 0 0 1 2.0 2.0V18.0a2.0 2.0 0 0 1 -2.0 2.0H6.0a2.0 2.0 0 0 1 -2.0 -2.0V6.0a2.0 2.0 0 0 1 2.0 -2.0Z", "M10.0 9.0H14.0a1.0 1.0 0 0 1 1.0 1.0V14.0a1.0 1.0 0 0 1 -1.0 1.0H10.0a1.0 1.0 0 0 1 -1.0 -1.0V10.0a1.0 1.0 0 0 1 1.0 -1.0Z", "M15 2v2", "M15 20v2", "M2 15h2", "M2 9h2", "M20 15h2", "M20 9h2", "M9 2v2", "M9 20v2") }
-    val Download: ImageVector by lazy { lucide("download", "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "M7 L10 L12 L15 L17 L10", "M12 15L12 3") }
+    val Download: ImageVector by lazy { lucide("download", "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "M7 10L12 15L17 10", "M12 15L12 3") }
     val EllipsisVertical: ImageVector by lazy { lucide("ellipsis-vertical", "M11.0 12.0a1.0 1.0 0 1 0 2.0 0a1.0 1.0 0 1 0 -2.0 0", "M11.0 5.0a1.0 1.0 0 1 0 2.0 0a1.0 1.0 0 1 0 -2.0 0", "M11.0 19.0a1.0 1.0 0 1 0 2.0 0a1.0 1.0 0 1 0 -2.0 0") }
     val ExternalLink: ImageVector by lazy { lucide("external-link", "M15 3h6v6", "M10 14 21 3", "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6") }
     val FileJson: ImageVector by lazy { lucide("file-json", "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", "M14 2v4a2 2 0 0 0 2 2h4", "M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1", "M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1") }
@@ -78,7 +92,7 @@ object Lucide {
     val Text: ImageVector by lazy { lucide("text", "M17 6.1H3", "M21 12.1H3", "M15.1 18H3") }
     val Trash2: ImageVector by lazy { lucide("trash-2", "M3 6h18", "M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6", "M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2", "M10 11L10 17", "M14 11L14 17") }
     val Truck: ImageVector by lazy { lucide("truck", "M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2", "M15 18H9", "M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14", "M15.0 18.0a2.0 2.0 0 1 0 4.0 0a2.0 2.0 0 1 0 -4.0 0", "M5.0 18.0a2.0 2.0 0 1 0 4.0 0a2.0 2.0 0 1 0 -4.0 0") }
-    val Upload: ImageVector by lazy { lucide("upload", "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "M17 L8 L12 L3 L7 L8", "M12 3L12 15") }
+    val Upload: ImageVector by lazy { lucide("upload", "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "M17 8L12 3L7 8", "M12 3L12 15") }
     val WifiOff: ImageVector by lazy { lucide("wifi-off", "M12 20h.01", "M8.5 16.429a5 5 0 0 1 7 0", "M5 12.859a10 10 0 0 1 5.17-2.69", "M19 12.859a10 10 0 0 0-2.007-1.523", "M2 8.82a15 15 0 0 1 4.177-2.643", "M22 8.82a15 15 0 0 0-11.288-3.764", "m2 2 20 20") }
     val X: ImageVector by lazy { lucide("x", "M18 6 6 18", "m6 6 12 12") }
     val Zap: ImageVector by lazy { lucide("zap", "M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z") }
