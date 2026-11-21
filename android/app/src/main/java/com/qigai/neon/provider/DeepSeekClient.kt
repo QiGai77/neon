@@ -39,7 +39,7 @@ class DeepSeekClient(
 
     fun buildBody(req: ChatRequest): JsonObject = buildJsonObject {
         put("model", req.model)
-        put("max_tokens", 32768)
+        // max_tokens omitted: optional on DeepSeek; default/limit depends on model + thinking (same as the web app)
         if (req.system.isNotBlank()) put("system", req.system)
         put("messages", buildJsonArray {
             req.messages.forEach { m -> add(messageJson(m)) }

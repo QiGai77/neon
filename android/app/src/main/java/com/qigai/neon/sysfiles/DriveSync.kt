@@ -30,7 +30,17 @@ import java.util.concurrent.TimeUnit
 class DriveSync(private val context: Context) {
     private val c get() = (context.applicationContext as NeonApp).container
 
-    private suspend fun token(): String = GoogleDriveAuth.silentToken(context) ?: throw DriveAuthExpired()
+    @Volatile private var cached: Pair<String, Long>? = null
+
+    /** Silent token from Play services, reused for 45 min (Google access tokens live ~60 min). */
+    private suspend fun token(): String {
+        cached?.let { (t, at) -> if (System.currentTimeMillis() - at < 45 * 60_000) return t }
+        val t = GoogleDriveAuth.silentToken(context) ?: throw DriveAuthExpired()
+        cached = t to System.currentTimeMillis()
+        return t
+    }
+
+    fun invalidateToken() { cached = null }
 
     fun client() = DriveClient { token() }
 
@@ -46,6 +56,15 @@ class DriveSync(private val context: Context) {
     private fun safeName(t: String) = (t.trim().ifEmpty { "未命名对话" }).replace(Regex("[\\\\/:*?\"<>|\\n\\r]+"), " ").take(80)
 
     suspend fun syncConversation(cid: String) {
+        try {
+            syncOnce(cid)
+        } catch (e: DriveAuthExpired) {
+            invalidateToken() // cached token may be stale; one fresh silent token, then give up
+            syncOnce(cid)
+        }
+    }
+
+    private suspend fun syncOnce(cid: String) {
         val conv = c.db.conversations().get(cid) ?: return
         val client = client()
         val f = folders(client)
@@ -108,6 +127,7 @@ class DriveSyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(
             if (cid == null) sync.syncAll() else sync.syncConversation(cid)
             Result.success()
         } catch (e: DriveAuthExpired) {
+            sync.invalidateToken()
             settings.put(SettingsRepository.DRIVE_ERROR, "Google 授权已过期，请重新授权")
             Result.failure()
         } catch (e: Exception) {
