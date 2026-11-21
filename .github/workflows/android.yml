@@ -34,7 +34,7 @@ jobs:
 
       - name: Unit tests
         working-directory: android
-        run: gradle :app:testDebugUnitTest --no-daemon --tests 'com.qigai.neon.guard.*' --tests 'com.qigai.neon.skills.*' --tests 'com.qigai.neon.hands.*' --tests 'com.qigai.neon.connectors.*'
+        run: gradle :app:testDebugUnitTest --no-daemon --tests 'com.qigai.neon.guard.*' --tests 'com.qigai.neon.skills.*' --tests 'com.qigai.neon.hands.*' --tests 'com.qigai.neon.connectors.*' --tests 'com.qigai.neon.sandbox.*'
 
       - name: Signing key
         env:
@@ -54,6 +54,8 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk "neon-v$V.apk"
           echo "APK=android/neon-v$V.apk" >> "$GITHUB_ENV"
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1); "$BT/apksigner" verify --print-certs "neon-v$V.apk" | head -5
+          unzip -l "neon-v$V.apk" | grep -E 'lib/arm64-v8a/lib(proot|proot-loader|talloc|android-shmem)\.so|assets/neon-mcp-cli/main.py|assets/rootfs-arm64'
+          test $(unzip -l "neon-v$V.apk" | grep -cE 'lib/arm64-v8a/lib(proot|proot-loader|talloc|android-shmem)\.so|assets/neon-mcp-cli/main.py') -eq 5
 
       - uses: actions/upload-artifact@v4
         with:

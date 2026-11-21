@@ -84,6 +84,7 @@ class ShellExecutor(
         return withContext(Dispatchers.IO) {
             runCatching {
                 val pb = ProcessBuilder(kernel.buildCommand(command)).redirectErrorStream(true)
+                pb.environment().remove("LD_PRELOAD")
                 pb.environment().putAll(kernel.buildEnv())
                 val proc = pb.start()
                 val outBuf = StringBuilder()

@@ -138,6 +138,52 @@ def main():
     else:
         print(f"libtalloc.so already exists: {talloc_so} ({talloc_so.stat().st_size} bytes)")
 
+    shmem_so = JNILIBS_DIR / "libandroid-shmem.so"
+    if not shmem_so.exists() or shmem_so.stat().st_size < 4_000:
+        base, rel = find_deb_filename("libandroid-shmem")
+        deb = download_bytes([f"{base}/{rel}"], "Termux libandroid-shmem aarch64")
+        extract_from_deb(deb, {"libandroid-shmem.so": shmem_so})
+    else:
+        print(f"libandroid-shmem.so already exists: {shmem_so} ({shmem_so.stat().st_size} bytes)")
+
+    # Termux 的 proot 依赖 libtalloc.so.2，但 APK 里只能放 lib*.so 命名的文件，
+    # 所以把 DT_NEEDED 和 SONAME 原地改成 libtalloc.so。
+    for so in (proot_so, talloc_so):
+        rename_dynstr(so, b"libtalloc.so.2\0", b"libtalloc.so\0\0\0")
+    for so in (proot_so, talloc_so, shmem_so):
+        print(f"{so.name}: {elf_dynamic(so)}")
+
+
+def elf_dynamic(path: pathlib.Path) -> list[tuple[str, str]]:
+    import struct
+    d = path.read_bytes()
+    shoff = struct.unpack_from("<Q", d, 0x28)[0]
+    shentsize, shnum, _ = struct.unpack_from("<HHH", d, 0x3A)
+    secs = [struct.unpack_from("<IIQQQQIIQQ", d, shoff + i * shentsize) for i in range(shnum)]
+    dyn = [s for s in secs if s[1] == 6]
+    if not dyn:
+        return []
+    strtab = secs[dyn[0][6]]
+    names = {1: "NEEDED", 14: "SONAME", 29: "RUNPATH"}
+    out, off = [], dyn[0][4]
+    while True:
+        tag, val = struct.unpack_from("<qQ", d, off)
+        off += 16
+        if tag == 0:
+            break
+        if tag in names:
+            o = strtab[4] + val
+            out.append((names[tag], d[o : d.index(b"\0", o)].decode()))
+    return out
+
+
+def rename_dynstr(path: pathlib.Path, old: bytes, new: bytes):
+    assert len(old) == len(new)
+    data = path.read_bytes()
+    if old in data:
+        path.write_bytes(data.replace(old, new))
+        print(f"  Patched {path.name}: {old!r} -> {new!r}")
+
 
 if __name__ == "__main__":
     main()

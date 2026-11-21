@@ -14,6 +14,8 @@ class PRootKernel(private val rootfsManager: RootfsManager) {
         return listOf(
             proot.absolutePath,
             "-0",
+            "--link2symlink",
+            "--kill-on-exit",
             "-r", rootfs.absolutePath,
             "-b", "${workspace.absolutePath}:/workspace",
             "-b", "/dev",
@@ -36,6 +38,8 @@ class PRootKernel(private val rootfsManager: RootfsManager) {
         put("TERM", "xterm-256color")
         put("LANG", "C.UTF-8")
         put("PROOT_TMP_DIR", rootfsManager.tmpDir.absolutePath)
+        put("TMPDIR", rootfsManager.tmpDir.absolutePath)
+        put("LD_LIBRARY_PATH", rootfsManager.prootBinary().parentFile!!.absolutePath)
         val loader = rootfsManager.loaderBinary()
         if (loader.exists()) {
             put("PROOT_LOADER", loader.absolutePath)

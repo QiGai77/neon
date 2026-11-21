@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.FileOutputStream
 
@@ -53,7 +55,11 @@ class RootfsManager(private val context: Context) {
     fun loaderBinary(): File = File(context.applicationInfo.nativeLibraryDir, "libproot-loader.so")
     fun busyboxBinary(): File = File(context.applicationInfo.nativeLibraryDir, "libbusybox.so")
 
-    suspend fun ensureInitialized() = withContext(Dispatchers.IO) {
+    private val initLock = Mutex()
+
+    suspend fun ensureInitialized() = initLock.withLock { initialize() }
+
+    private suspend fun initialize() = withContext(Dispatchers.IO) {
         workspaceDir.mkdirs()
         skillsDir.mkdirs()
         memoryDir.mkdirs()
@@ -90,29 +96,16 @@ class RootfsManager(private val context: Context) {
         _status.value = SandboxStatus.Extracting("正在初始化 Linux 环境")
         runCatching {
             val staging = File(context.filesDir, "rootfs.staging")
-            if (staging.exists()) staging.deleteRecursively()
+            TarExtractor.deleteTree(staging)
             staging.mkdirs()
 
-            val archiveFile = File(tmpDir, matchedAsset)
-            context.assets.open(matchedAsset).use { input ->
-                FileOutputStream(archiveFile).use { output -> input.copyTo(output) }
-            }
-
             val isGzip = matchedAsset.endsWith(".gz")
-            val tarFlag = if (isGzip) "-xzf" else "-xf"
-            val bb = busyboxBinary()
-            val cmd = if (bb.exists()) {
-                listOf(bb.absolutePath, "tar", tarFlag, archiveFile.absolutePath, "-C", staging.absolutePath)
-            } else {
-                listOf("/system/bin/tar", tarFlag, archiveFile.absolutePath, "-C", staging.absolutePath)
+            context.assets.open(matchedAsset).use { raw ->
+                val input = if (isGzip) java.util.zip.GZIPInputStream(raw.buffered(1 shl 16)) else raw.buffered(1 shl 16)
+                TarExtractor.extract(input, staging)
             }
-            val proc = ProcessBuilder(cmd).redirectErrorStream(true).start()
-            val out = proc.inputStream.bufferedReader().readText()
-            val code = proc.waitFor()
-            archiveFile.delete()
-            if (code != 0) error("解压 rootfs 失败 (exit=$code): $out")
 
-            if (rootfsDir.exists()) rootfsDir.deleteRecursively()
+            TarExtractor.deleteTree(rootfsDir)
             if (!staging.renameTo(rootfsDir)) error("原子切换 rootfs 目录失败")
 
             File(rootfsDir, ".version").writeText(targetVersion)
