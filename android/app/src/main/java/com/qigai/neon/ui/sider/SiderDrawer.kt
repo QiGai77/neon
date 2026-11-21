@@ -1,5 +1,6 @@
 package com.qigai.neon.ui.sider
 
+import androidx.compose.foundation.border
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -167,6 +168,10 @@ fun SiderContent(
     onNewChat: () -> Unit,
     onRename: (ConversationEntity) -> Unit,
     onDelete: (ConversationEntity) -> Unit,
+    sandbox: SandboxUi? = null,
+    hubs: HubCounts? = null,
+    onOpenSandbox: () -> Unit = {},
+    onOpenHub: (Hub) -> Unit = {},
 ) {
     val c = Neon.colors
     Column(Modifier.fillMaxSize().background(c.bgDrawer).statusBarsPadding().navigationBarsPadding()) {
@@ -185,7 +190,9 @@ fun SiderContent(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item(key = "quota") { QuotaCard(quota, onRefreshQuota, onConnectGo) }
+            if (sandbox != null) item(key = "sandbox") { SandboxCard(sandbox, onOpenSandbox) }
             item(key = "drive") { DriveCard(drive, onAuthorizeDrive, onDriveSync, onOpenFolder) }
+            if (hubs != null) item(key = "hubs") { HubGrid(hubs, onOpenHub) }
             item(key = "convHead") {
                 Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     SectionLabel("最近对话", Modifier.weight(1f), trailing = if (conversations.isEmpty()) null else "${conversations.size}")
@@ -436,3 +443,73 @@ private fun FolderChip(name: String, id: String?, modifier: Modifier, onOpen: (S
 
 @Suppress("unused")
 private fun iconRef(): ImageVector = Lucide.Folder
+
+
+// ───────────────────────── sandbox + hubs (S02) ─────────────────────────
+
+/** Offline PRoot sandbox status. [ready] false = rootfs still unpacking ([progress] 0..1). */
+data class SandboxUi(
+    val distro: String,
+    val ready: Boolean,
+    val progress: Float = 1f,
+    val detail: String,
+)
+
+enum class Hub { CONNECTORS, SKILLS, MEMORY, TASKS }
+
+data class HubCounts(val connectors: Int, val skills: Int, val memories: Int, val runningTasks: Int)
+
+@Composable
+private fun SandboxCard(s: SandboxUi, onOpen: () -> Unit) {
+    val c = Neon.colors
+    NeonCard(padding = PaddingValues(16.dp), onClick = onOpen) {
+        Row(verticalAlignment = Alignment.Top) {
+            IconSquircle(Lucide.SquareTerminal, size = 40.dp, iconSize = 20.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("离线 Linux 沙箱", style = NeonType.cardTitle().copy(fontSize = 16.sp), modifier = Modifier.weight(1f))
+                    Text("PRoot", style = NeonType.mono().copy(color = c.inkTertiary))
+                }
+                Spacer(Modifier.height(6.dp))
+                NeonChip(
+                    if (s.ready) "${s.distro} · 离线就绪" else "${s.distro} · 解压中 ${(s.progress * 100).toInt()}%",
+                    style = if (s.ready) ChipStyle.Active else ChipStyle.Soft, height = 28.dp,
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(s.detail, style = NeonType.caption().copy(fontSize = 13.sp, color = c.inkSecondary), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun HubGrid(h: HubCounts, onOpen: (Hub) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            HubTile(Lucide.Plug, "连接器中心", "${h.connectors} 个已连接", Modifier.weight(1f)) { onOpen(Hub.CONNECTORS) }
+            HubTile(Lucide.Book, "技能库", "${h.skills} 个技能", Modifier.weight(1f)) { onOpen(Hub.SKILLS) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            HubTile(Lucide.Bookmark, "长期记忆", "${h.memories} 条记忆", Modifier.weight(1f)) { onOpen(Hub.MEMORY) }
+            HubTile(Lucide.CalendarClock, "定时任务", "${h.runningTasks} 个运行中", Modifier.weight(1f)) { onOpen(Hub.TASKS) }
+        }
+    }
+}
+
+@Composable
+private fun HubTile(icon: ImageVector, title: String, meta: String, modifier: Modifier, onClick: () -> Unit) {
+    val c = Neon.colors
+    Column(
+        modifier.clip(NeonShapes.card).background(c.bgSurface).border(1.dp, c.borderCard, NeonShapes.card)
+            .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, Modifier.size(20.dp), tint = c.inkPrimary)
+            Spacer(Modifier.weight(1f))
+            Text(meta, style = NeonType.tnum(NeonType.overline()), maxLines = 1)
+        }
+        Spacer(Modifier.height(12.dp))
+        Text(title, style = NeonType.item().copy(fontSize = 15.5.sp), maxLines = 1)
+    }
+}

@@ -1,5 +1,10 @@
 package com.qigai.neon.ui.chat
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.layout.offset
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -85,6 +90,9 @@ fun Composer(
     modifier: Modifier = Modifier,
     skills: List<PaletteSkill> = emptyList(),
     onPickSkill: (PaletteSkill) -> Unit = {},
+    /** null hides the Hands toggle (no accessibility / Shizuku engine available). */
+    hands: Boolean? = null,
+    onHands: (Boolean) -> Unit = {},
 ) {
     val c = Neon.colors
     val voiceMode = voice.recording || voice.transcribing
@@ -139,6 +147,7 @@ fun Composer(
                         icon = Lucide.Sparkles, height = 34.dp,
                         onClick = { onDeepThink(!deepThink) },
                     )
+                    if (hands != null) HandsToggle(hands, onHands)
                 }
                 Spacer(Modifier.width(8.dp))
                 AnimatedContent(
@@ -267,6 +276,29 @@ private fun SkillTile(s: PaletteSkill, selected: Boolean, index: Int, modifier: 
         Column {
             Text(s.name, style = NeonType.item(), maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("/" + s.trigger, style = NeonType.mono(), maxLines = 1)
+        }
+    }
+}
+
+
+/** "✋ ●" capsule from S01a/S01b: lets the agent drive the phone in this turn. */
+@Composable
+private fun HandsToggle(on: Boolean, onChange: (Boolean) -> Unit) {
+    val c = Neon.colors
+    val bg by animateColorAsState(if (on) c.chipActive else Color.Transparent, label = "handsBg")
+    val fg = if (on) c.onChipActive else c.inkSecondary
+    val edge = if (on) c.chipActiveBorder else c.borderHairline
+    val knob by animateDpAsState(if (on) 12.dp else 2.dp, label = "handsKnob")
+    Row(
+        Modifier.height(34.dp).clip(NeonShapes.capsule).background(bg)
+            .then(if (edge.alpha > 0f) Modifier.border(1.dp, edge, NeonShapes.capsule) else Modifier)
+            .clickable(role = Role.Switch) { onChange(!on) }.padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Lucide.Hand, "Hands", Modifier.size(16.dp), tint = fg)
+        Spacer(Modifier.width(6.dp))
+        Box(Modifier.size(26.dp, 16.dp).clip(NeonShapes.capsule).background(if (on) fg else c.borderHairline)) {
+            Box(Modifier.offset(x = knob, y = 2.dp).size(12.dp).clip(NeonShapes.capsule).background(if (on) c.chipActive else c.bgSurface))
         }
     }
 }

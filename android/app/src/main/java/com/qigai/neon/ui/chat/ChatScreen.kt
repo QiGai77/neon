@@ -197,6 +197,8 @@ fun ChatContent(
     onSend: () -> Unit,
     onStop: () -> Unit,
     skills: List<PaletteSkill> = emptyList(),
+    hands: Boolean? = null,
+    onHands: (Boolean) -> Unit = {},
 ) {
     val c = Neon.colors
     Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().imePadding()) {
@@ -249,7 +251,7 @@ fun ChatContent(
             voice = voice,
             onMic = onMic, onVoiceCancel = onVoiceCancel, onVoiceConfirm = onVoiceConfirm,
             onPlus = onPlus, onSend = onSend, onStop = onStop,
-            skills = skills,
+            skills = skills, hands = hands, onHands = onHands,
             onPickSkill = { onInput("/${it.trigger} "); onPalette(false) },
             modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 10.dp),
         )
