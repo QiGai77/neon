@@ -1,0 +1,58 @@
+package com.qigai.neon.data
+
+import com.qigai.neon.ui.theme.ThemeMode
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+
+data class AppSettings(
+    val raw: Map<String, String> = emptyMap(),
+) {
+    val loaded: Boolean get() = raw.containsKey(SettingsRepository.LOADED)
+    val theme: ThemeMode get() = runCatching { ThemeMode.valueOf(raw[SettingsRepository.THEME] ?: "LIGHT") }.getOrDefault(ThemeMode.LIGHT)
+    val provider: String? get() = raw[SettingsRepository.PROVIDER]
+    val deepseekModel: String get() = raw[SettingsRepository.DEEPSEEK_MODEL] ?: "deepseek-v4-pro"
+    val goModel: String get() = raw[SettingsRepository.GO_MODEL] ?: "deepseek-v4.1-flash"
+    val deepThinkDefault: Boolean get() = raw[SettingsRepository.DEEP_THINK] == "1"
+    val deepseekBase: String get() = raw[SettingsRepository.DEEPSEEK_BASE]?.trimEnd('/') ?: SettingsRepository.DEFAULT_DEEPSEEK_BASE
+    val goBase: String get() = raw[SettingsRepository.GO_BASE]?.trimEnd('/') ?: SettingsRepository.DEFAULT_GO_BASE
+    val driveAutoSync: Boolean get() = raw[SettingsRepository.DRIVE_AUTOSYNC] != "0"
+    val driveConnected: Boolean get() = raw[SettingsRepository.DRIVE_CONNECTED] == "1"
+    val driveEmail: String? get() = raw[SettingsRepository.DRIVE_EMAIL]
+    val driveFolders: String? get() = raw[SettingsRepository.DRIVE_FOLDERS]
+    val driveLastSync: Long? get() = raw[SettingsRepository.DRIVE_LAST_SYNC]?.toLongOrNull()
+    val driveError: String? get() = raw[SettingsRepository.DRIVE_ERROR]
+}
+
+class SettingsRepository(private val dao: SettingDao, scope: CoroutineScope) {
+    companion object {
+        const val LOADED = "_loaded"
+        const val THEME = "theme"
+        const val PROVIDER = "provider"
+        const val DEEPSEEK_MODEL = "deepseek_model"
+        const val GO_MODEL = "go_model"
+        const val DEEP_THINK = "deep_think_default"
+        const val DEEPSEEK_BASE = "deepseek_base"
+        const val GO_BASE = "go_base"
+        const val DRIVE_AUTOSYNC = "drive_autosync"
+        const val DRIVE_CONNECTED = "drive_connected"
+        const val DRIVE_EMAIL = "drive_email"
+        const val DRIVE_FOLDERS = "drive_folders"
+        const val DRIVE_LAST_SYNC = "drive_last_sync"
+        const val DRIVE_ERROR = "drive_error"
+        const val DEFAULT_DEEPSEEK_BASE = "https://api.deepseek.com"
+        const val DEFAULT_GO_BASE = "https://opencode.ai/inference/go"
+    }
+
+    val state: StateFlow<AppSettings> = dao.observeAll()
+        .map { list -> AppSettings(list.associate { it.key to it.value } + (LOADED to "1")) }
+        .stateIn(scope, SharingStarted.Eagerly, AppSettings())
+
+    suspend fun put(key: String, value: String?) {
+        if (value == null) dao.remove(key) else dao.put(SettingEntity(key, value))
+    }
+
+    suspend fun get(key: String): String? = dao.get(key)
+}

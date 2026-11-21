@@ -1,2 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources><color name="neon_bg">#F4F3EE</color></resources>
+<resources>
+    <color name="canvas">#F5F4F0</color>
+</resources>
