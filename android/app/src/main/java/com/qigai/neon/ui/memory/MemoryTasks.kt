@@ -135,10 +135,10 @@ fun MemoryTasksContent(
                     Spacer(Modifier.height(12.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         facts.forEach { f ->
-                            NeonChip(f, style = ChipStyle.Soft, height = 32.dp, textColor = c.inkPrimary) {
+                            NeonChip(f, style = ChipStyle.Soft, height = 32.dp, textColor = c.inkPrimary, trailing = {
                                 Spacer(Modifier.width(6.dp))
                                 Icon(Lucide.X, "遗忘", Modifier.size(13.dp).clip(NeonShapes.capsule).clickable { onRemoveFact(f) }, tint = c.inkSecondary)
-                            }
+                            })
                         }
                         NeonChip("添加", style = ChipStyle.Outline, icon = Lucide.Plus, height = 32.dp, onClick = onAddFact)
                     }
