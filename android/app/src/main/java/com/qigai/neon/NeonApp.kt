@@ -46,6 +46,7 @@ class NeonApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashLog.install(this)
         container = NeonContainer(this)
     }
 }

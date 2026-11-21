@@ -25,6 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -65,6 +67,10 @@ fun NeonRoot(vm: MainViewModel) {
     }
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
+    var crash by remember { mutableStateOf(CrashLog.read(ctx)) }
+    crash?.let { text ->
+        CrashDialog(text, onDismiss = { CrashLog.clear(ctx); crash = null })
+    }
     com.qigai.neon.ui.caps.SentinelHost(vm, onSandboxScreen = route == "sandbox") {
     NeonSheets(vm, sheet, { sheet = it }) {
         NavHost(
@@ -88,3 +94,36 @@ fun NeonRoot(vm: MainViewModel) {
 
 @Suppress("unused")
 private fun unusedArgb() = androidx.compose.ui.graphics.Color.Black.toArgb()
+
+
+@Composable
+private fun CrashDialog(text: String, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val c = com.qigai.neon.ui.theme.Neon.colors
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { androidx.compose.material3.Text("上次闪退了", style = com.qigai.neon.ui.theme.NeonType.headline()) },
+        text = {
+            androidx.compose.foundation.text.selection.SelectionContainer {
+                androidx.compose.material3.Text(
+                    text,
+                    style = com.qigai.neon.ui.theme.NeonType.mono().copy(fontSize = androidx.compose.ui.unit.TextUnit(10f, androidx.compose.ui.unit.TextUnitType.Sp)),
+                    modifier = androidx.compose.ui.Modifier.heightIn(max = androidx.compose.ui.unit.Dp(360f))
+                        .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                )
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton({
+                val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+                cm?.setPrimaryClip(android.content.ClipData.newPlainText("Neon crash", text))
+                Toast.makeText(ctx, "已复制", Toast.LENGTH_SHORT).show()
+                onDismiss()
+            }) { androidx.compose.material3.Text("复制并关闭", color = c.inkPrimary) }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onDismiss) { androidx.compose.material3.Text("关闭", color = c.inkSecondary) }
+        },
+        containerColor = c.bgSurface,
+    )
+}
