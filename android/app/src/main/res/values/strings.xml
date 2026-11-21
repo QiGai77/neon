@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Neon</string>
+    <string name="accessibility_service_label">Neon Hands 无障碍控场服务</string>
+    <string name="accessibility_service_description">允许 Neon 读取当前屏幕控件树并代你执行点击、滑动、输入等操作；所有高危操作均受 Sentinel 门禁保护。</string>
+    <string name="notification_listener_label">Neon 通知连接器</string>
+</resources>

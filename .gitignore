@@ -14,5 +14,7 @@ tmp/
 android/.gradle/
 android/app/build/
 android/local.properties
+android/app/src/main/assets/rootfs-arm64.tar.gz
+android/app/src/main/jniLibs/arm64-v8a/*.so
 *.jks
 *.keystore
