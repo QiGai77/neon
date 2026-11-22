@@ -219,7 +219,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _pending.value = emptyList()
         val blocks = files.map { ContentBlock.Attachment(it.name, it.path, it.mime, it.size) }
         viewModelScope.launch {
-            val cid = c.agent.send(before, t, cfg, blocks)
+            val group = if (before == null) _pendingGroup.value else null
+            _pendingGroup.value = null
+            val cid = c.agent.send(before, t, cfg, blocks, group)
             if (_current.value == before) _current.value = cid
         }
         return true
@@ -236,6 +238,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun newChat() {
         _current.value = null
+        _pendingGroup.value = null
+    }
+
+    /** Members of the 群聊 the next message starts; null for a normal chat. */
+    private val _pendingGroup = MutableStateFlow<List<com.qigai.neon.agent.AgentRuntime.GroupMember>?>(null)
+    val pendingGroup: StateFlow<List<com.qigai.neon.agent.AgentRuntime.GroupMember>?> = _pendingGroup.asStateFlow()
+
+    fun newGroup(members: List<com.qigai.neon.agent.AgentRuntime.GroupMember>) {
+        _current.value = null
+        _pendingGroup.value = members
+        toast("群聊：" + members.joinToString("、") { it.name } + "，说点什么开始")
     }
 
     fun open(id: String) { _current.value = id }

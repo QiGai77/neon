@@ -97,9 +97,22 @@ class AgentRuntime(
     }
 
     /** Creates the user message and runs the loop. Returns the conversation id. */
-    suspend fun send(conversationId: String?, text: String, cfg: TurnConfig, attachments: List<ContentBlock.Attachment> = emptyList()): String {
+    /** Group chats: members answer in turn, each with its own persona. Stored in settings as group_<cid>. */
+    data class GroupMember(val name: String, val persona: String)
+    private val speakers = java.util.concurrent.ConcurrentHashMap<String, Pair<GroupMember, List<GroupMember>>>()
+
+    suspend fun groupOf(cid: String): List<GroupMember>? = db.settings().get("group_$cid")?.lines()?.mapNotNull { l ->
+        val p = l.split('\t', limit = 2); if (p[0].isBlank()) null else GroupMember(p[0].trim(), p.getOrElse(1) { "" }.trim())
+    }?.takeIf { it.isNotEmpty() }
+
+    suspend fun setGroup(cid: String, members: List<GroupMember>) {
+        db.settings().put(com.qigai.neon.data.SettingEntity("group_$cid", members.joinToString("\n") { it.name.replace("\t", " ") + "\t" + it.persona.replace("\n", " ").replace("\t", " ") }))
+    }
+
+    suspend fun send(conversationId: String?, text: String, cfg: TurnConfig, attachments: List<ContentBlock.Attachment> = emptyList(), group: List<GroupMember>? = null): String {
         val now = System.currentTimeMillis()
         val cid = conversationId ?: newId()
+        if (group != null && conversationId == null) setGroup(cid, group)
         if (db.conversations().get(cid) == null) {
             db.conversations().upsert(
                 ConversationEntity(
@@ -135,7 +148,24 @@ class AgentRuntime(
 
     private fun start(cid: String, cfg: TurnConfig) {
         jobs[cid]?.cancel()
-        val j = scope.launch { loop(cid, cfg) }
+        val j = scope.launch {
+            val g = groupOf(cid)
+            if (g == null) loop(cid, cfg)
+            else try {
+                for (m in g) {
+                    speakers[cid] = m to g
+                    val before = db.messages().list(cid).map { it.id }.toHashSet()
+                    loop(cid, cfg)
+                    // sign the member's reply so the chat and the other members can tell who spoke
+                    db.messages().list(cid).firstOrNull { it.role == "assistant" && it.id !in before }?.let { msg ->
+                        val blocks = BlocksJson.decode(msg.blocks)
+                        db.messages().upsert(msg.copy(blocks = BlocksJson.encode(listOf(ContentBlock.Text("**${m.name}**")) + blocks)))
+                    }
+                    val last = db.messages().list(cid).lastOrNull { it.role == "assistant" }
+                    if (last?.status == "error" || last?.status == "stopped") break
+                }
+            } finally { speakers.remove(cid) }
+        }
         jobs[cid] = j
         j.invokeOnCompletion { jobs.remove(cid, j) }
     }
@@ -220,7 +250,15 @@ class AgentRuntime(
             ?.let { BlocksJson.decode(it.blocks).filterIsInstance<ContentBlock.Text>().joinToString("\n") { b -> b.text } }.orEmpty()
         val system = buildString {
             append(SYSTEM)
-            persona().takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
+            val sp = speakers[cid]
+            if (sp == null) persona().takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
+            else {
+                val (me, all) = sp
+                append("\n\n【群聊】这是一个多人群聊，你是其中的「").append(me.name).append("」。")
+                if (me.persona.isNotBlank()) append("你的设定：").append(me.persona).append("。")
+                append("群里还有：").append(all.filter { it != me }.joinToString("、") { it.name }).append("，加上用户。")
+                append("前面以 **名字** 开头的回复是其他成员说的。只以你的身份说话，回复开头不要写自己的名字；可以接着别人的话补充或反驳，不要重复别人说过的内容，简短一些。")
+            }
             memory.formatForPrompt(lastUserText).takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
             skills.catalogForPrompt().takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
             skills.matchByPrompt(lastUserText)?.let { sk ->
@@ -325,9 +363,10 @@ class AgentRuntime(
     }
 
     /** Runs a prompt to completion without the chat UI (scheduled tasks). Returns conversation id and final text. */
-    suspend fun runHeadless(title: String, prompt: String, cfg: TurnConfig): Pair<String, String> {
+    suspend fun runHeadless(title: String, prompt: String, cfg: TurnConfig, onCreated: (String) -> Unit = {}): Pair<String, String> {
         val now = System.currentTimeMillis()
         val cid = newId()
+        onCreated(cid)
         db.conversations().upsert(ConversationEntity(id = cid, title = title.take(40), createdAt = now, updatedAt = now, provider = cfg.provider.id.id, model = cfg.model))
         db.messages().insert(MessageEntity(id = newId(), conversationId = cid, role = "user", blocks = BlocksJson.encode(listOf(ContentBlock.Text(prompt))), createdAt = now))
         loop(cid, cfg)

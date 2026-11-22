@@ -13,18 +13,37 @@ import com.qigai.neon.R
 class HandsForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
+    /** Keeps the CPU on while a turn runs, so a locked screen does not pause it. Capped at 30 min per start. */
+    private var wake: android.os.PowerManager.WakeLock? = null
+
+    override fun onDestroy() {
+        runCatching { wake?.takeIf { it.isHeld }?.release() }
+        wake = null
+        super.onDestroy()
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            runCatching { (application as com.qigai.neon.NeonApp).container.agent.stop() }
             androidx.core.app.ServiceCompat.stopForeground(this, androidx.core.app.ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
         ensureChannel()
+        if (wake?.isHeld != true) runCatching {
+            wake = getSystemService(android.os.PowerManager::class.java)
+                .newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "neon:agent").apply { acquire(30 * 60_000L) }
+        }
+        val stop = android.app.PendingIntent.getService(
+            this, 1, Intent(this, HandsForegroundService::class.java).setAction(ACTION_STOP),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Neon 正在干活")
             .setContentText(intent?.getStringExtra("status")?.takeIf { it.isNotBlank() } ?: "切到别的应用也会继续")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setOngoing(true)
+            .addAction(0, "停止", stop)
             .build()
         androidx.core.app.ServiceCompat.startForeground(
             this, NOTIF_ID, notification,

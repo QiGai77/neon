@@ -241,6 +241,30 @@ fun BrowserRoute(vm: MainViewModel, onBack: () -> Unit) {
                 modifier = Modifier.fillMaxSize(),
             )
         }
+        val offer by b.offerSave.collectAsState()
+        offer?.let { site ->
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(top = 10.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+                    .background(com.qigai.neon.ui.theme.Glass.tokens.tile).padding(16.dp),
+            ) {
+                Text("记住 $site 的登录吗", style = NeonType.item())
+                Spacer(Modifier.height(4.dp))
+                Text("存进安全表单，以后 Neon 打开这个网站直接是登录状态，Cookie 不会交给模型", style = NeonType.caption())
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PillButton("不用", kind = ButtonKind.Secondary, height = 38.dp, modifier = Modifier.weight(1f)) { b.dismissOffer(true) }
+                    PillButton("记住", icon = Lucide.Lock, height = 38.dp, modifier = Modifier.weight(1f)) {
+                        scope.launch {
+                            val existing = vm.c.vault.forSite(st.url).firstOrNull { it.kind == "cookie" }?.id
+                            val saved = b.saveLogin(existing, null)
+                            b.dismissOffer(false)
+                            vm.toast(if (saved != null) "已记住 $site 的登录" else "没取到登录状态，登录完成后再点保存")
+                        }
+                    }
+                }
+            }
+        }
         Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PillButton("后退", kind = ButtonKind.Secondary, icon = Lucide.ArrowLeft, height = 42.dp, modifier = Modifier.weight(1f)) {
                 b.webView().let { if (it.canGoBack()) it.goBack() }

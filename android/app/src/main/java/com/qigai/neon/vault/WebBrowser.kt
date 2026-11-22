@@ -41,6 +41,48 @@ class WebBrowser(private val app: Context, private val vault: Vault) {
     val state: StateFlow<BrowserState> = _state.asStateFlow()
     private var elements: List<WebElement> = emptyList()
 
+    /** Site whose login just went through in this browser and is not saved yet; the screen offers to keep it. */
+    private val _offerSave = MutableStateFlow<String?>(null)
+    val offerSave: StateFlow<String?> = _offerSave.asStateFlow()
+    @Volatile private var pendingLogin: String? = null
+    private val declined = HashSet<String>()
+    val cdp = CdpBridge()
+
+    fun dismissOffer(forever: Boolean) {
+        _offerSave.value?.let { if (forever) declined.add(it) }
+        _offerSave.value = null
+    }
+
+    /** Called from page JS when a form with a password field is submitted. Carries no field values. */
+    private inner class LoginProbe {
+        @android.webkit.JavascriptInterface
+        fun submitted(url: String) { pendingLogin = runCatching { siteOf(url) }.getOrNull() }
+    }
+
+    private val probeJs = """(function(){if(window.__neonProbe)return;window.__neonProbe=1;
+      function hasPw(f){return f&&f.querySelector&&f.querySelector('input[type=password]');}
+      function fire(){try{NeonLogin.submitted(location.href);}catch(e){}}
+      document.addEventListener('submit',function(e){if(hasPw(e.target))fire();},true);
+      document.addEventListener('click',function(e){var b=e.target&&e.target.closest&&e.target.closest('button,input[type=submit],[role=button]');
+        if(!b)return;var f=b.closest('form')||document;if(f.querySelector('input[type=password]')&&f.querySelector('input[type=password]').value)fire();},true);
+      document.addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target&&e.target.type==='password'&&e.target.value)fire();},true);
+    })()"""
+
+    private fun checkLoginDone(url: String) {
+        val site = pendingLogin ?: return
+        if (!url.startsWith("http")) return
+        val now = runCatching { siteOf(url) }.getOrNull() ?: return
+        // still on a page asking for the password: not done yet
+        if (now != site && !sameSite(now, site) && !now.contains("google") && !site.contains("google")) return
+        val cookies = CookieManager.getInstance().getCookie(url)
+        if (cookies.isNullOrBlank()) return
+        pendingLogin = null
+        if (site in declined || now in declined) return
+        val saved = vault.forSite(url).firstOrNull { it.kind == "cookie" }
+        if (saved?.cookies == cookies) return
+        _offerSave.value = now
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     fun webView(): WebView {
         view?.let { return it }
@@ -50,6 +92,7 @@ class WebBrowser(private val app: Context, private val vault: Vault) {
         w.settings.userAgentString = w.settings.userAgentString.replace("; wv", "")
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(w, true)
+        w.addJavascriptInterface(LoginProbe(), "NeonLogin")
         w.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 _state.value = BrowserState(url, view.title.orEmpty(), true)
@@ -57,6 +100,10 @@ class WebBrowser(private val app: Context, private val vault: Vault) {
             override fun onPageFinished(view: WebView, url: String) {
                 _state.value = BrowserState(url, view.title.orEmpty(), false)
                 loaded?.complete(Unit)
+                view.evaluateJavascript(probeJs, null)
+                view.postDelayed({ view.evaluateJavascript("!!document.querySelector('input[type=password]')") { has ->
+                    if (has != "true") checkLoginDone(url)
+                } }, 800)
             }
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val scheme = request.url.scheme.orEmpty()

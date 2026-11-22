@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -93,6 +94,8 @@ fun ChatScreen(vm: MainViewModel, openSheet: (SheetKind?) -> Unit, onOpenSetting
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { hideBar.value = false } }
 
     val messages by vm.messages.collectAsState()
+    val handsBlocked by vm.c.tools.handsBlocked.collectAsState()
+    var groupSheet by remember { mutableStateOf(false) }
     val conv by vm.currentConversation.collectAsState()
     val agent by vm.agentState.collectAsState()
     val s by vm.settings.collectAsState()
@@ -178,7 +181,31 @@ fun ChatScreen(vm: MainViewModel, openSheet: (SheetKind?) -> Unit, onOpenSetting
             opsCollapsed = s.opsCollapsed,
             bubble = s.chatStyle == com.qigai.neon.data.ChatStyle.BUBBLE,
             attachments = pending, onRemoveAttachment = { vm.removeAttachment(it) },
+            onNewGroup = { groupSheet = true },
+            notice = {
+        if (handsBlocked) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
+                    .background(com.qigai.neon.ui.theme.Glass.tokens.tile).padding(start = 14.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Neon 想替你点手机", style = NeonType.item())
+                    Text("打开无障碍里的 Neon 就能操作，开好回来再说一遍", style = NeonType.caption())
+                }
+                com.qigai.neon.ui.components.PillButton("去开启", height = 34.dp) {
+                    vm.c.tools.handsBlocked.value = false
+                    runCatching { ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                }
+                com.qigai.neon.ui.home.GlassCircle(com.qigai.neon.ui.icons.Lucide.X, "关闭", size = 34.dp) { vm.c.tools.handsBlocked.value = false }
+            }
+        }
+            },
         )
+        if (groupSheet) GroupChatSheet(onDismiss = { groupSheet = false }) { members ->
+            groupSheet = false; vm.newGroup(members); input = ""
+        }
     }
 }
 
@@ -214,6 +241,8 @@ fun ChatContent(
     attachments: List<PendingAttachment> = emptyList(),
     onRemoveAttachment: (PendingAttachment) -> Unit = {},
     initialThinkOpen: Boolean = false,
+    notice: @Composable () -> Unit = {},
+    onNewGroup: () -> Unit = {},
 ) {
     val c = Neon.colors
     val turns = remember(messages) { opTurns(messages) }
@@ -229,7 +258,7 @@ fun ChatContent(
         }
     }
     Column(Modifier.fillMaxSize().neonBackdrop().statusBarsPadding().imePadding()) {
-        ChatTopBar(title, modelLabel, onMenu, onNewChat, onModel, thinking = busy)
+        ChatTopBar(title, modelLabel, onMenu, onNewChat, onModel, thinking = busy, onNewGroup = onNewGroup)
 
         val listState = rememberLazyListState()
         LaunchedEffect(shown.size, messages.lastOrNull()?.blocks?.length) {
@@ -277,6 +306,7 @@ fun ChatContent(
             }
         }
 
+        notice()
         Composer(
             text = input, onText = onInput, busy = busy,
             effort = effort, onEffort = onEffort,
@@ -292,11 +322,14 @@ fun ChatContent(
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun ChatTopBar(
     title: String?, modelLabel: String?, onMenu: () -> Unit, onNewChat: () -> Unit, onModel: () -> Unit,
     thinking: Boolean = false,
+    onNewGroup: () -> Unit = {},
 ) {
     val c = Neon.colors
+    var menu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         IconBtn(Lucide.Text, "菜单", onClick = onMenu)
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -320,7 +353,64 @@ private fun ChatTopBar(
                 Icon(Lucide.ChevronDown, "选择模型", Modifier.size(13.dp), tint = c.inkTertiary)
             }
         }
-        IconBtn(Lucide.SquarePen, "新对话", onClick = onNewChat)
+        Box {
+            Box(
+                Modifier.size(44.dp).clip(NeonShapes.capsule)
+                    .combinedClickable(onClick = onNewChat, onLongClick = { menu = true }, onLongClickLabel = "选会话或群聊"),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Lucide.SquarePen, "新对话，长按选群聊", Modifier.size(22.dp), tint = c.inkPrimary) }
+            androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                androidx.compose.material3.DropdownMenuItem(text = { Text("新会话") }, onClick = { menu = false; onNewChat() })
+                androidx.compose.material3.DropdownMenuItem(text = { Text("新群聊") }, onClick = { menu = false; onNewGroup() })
+            }
+        }
+    }
+}
+
+private val GROUP_PRESETS = listOf(
+    com.qigai.neon.agent.AgentRuntime.GroupMember("产品", "关心用户要什么、值不值得做，先问为什么"),
+    com.qigai.neon.agent.AgentRuntime.GroupMember("工程师", "关心怎么实现、成本和风险，给具体做法"),
+    com.qigai.neon.agent.AgentRuntime.GroupMember("设计师", "关心体验和细节，给看得见的建议"),
+    com.qigai.neon.agent.AgentRuntime.GroupMember("唱反调", "专门找漏洞和反例，说话直接"),
+    com.qigai.neon.agent.AgentRuntime.GroupMember("省钱达人", "只关心怎么零成本或最便宜地做到"),
+)
+
+/** Pick two to four members for a 群聊; each answers in turn with its own persona. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun GroupChatSheet(onDismiss: () -> Unit, onCreate: (List<com.qigai.neon.agent.AgentRuntime.GroupMember>) -> Unit) {
+    val picked = remember { androidx.compose.runtime.mutableStateListOf(GROUP_PRESETS[0], GROUP_PRESETS[1], GROUP_PRESETS[3]) }
+    val custom = remember { androidx.compose.runtime.mutableStateListOf<com.qigai.neon.agent.AgentRuntime.GroupMember>() }
+    var name by remember { mutableStateOf("") }
+    var persona by remember { mutableStateOf("") }
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(horizontal = 20.dp).navigationBarsPadding().imePadding().padding(bottom = 16.dp)) {
+            Text("新群聊", style = NeonType.headline())
+            Spacer(Modifier.height(4.dp))
+            Text("选两到四个成员，你说一句，他们按顺序各自回一轮", style = NeonType.caption())
+            Spacer(Modifier.height(14.dp))
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                (GROUP_PRESETS + custom).forEach { m ->
+                    val on = m in picked
+                    com.qigai.neon.ui.home.GlassChip(m.name, on) {
+                        if (on) picked.remove(m) else if (picked.size < 4) picked.add(m)
+                    }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Text("自己加一个", style = NeonType.overline())
+            Spacer(Modifier.height(6.dp))
+            NeonField(name, { name = it }, "名字，比如 老板")
+            Spacer(Modifier.height(8.dp))
+            NeonField(persona, { persona = it }, "性格或立场，比如 只看结果")
+            Spacer(Modifier.height(8.dp))
+            com.qigai.neon.ui.components.PillButton("加入", kind = com.qigai.neon.ui.components.ButtonKind.Secondary, height = 36.dp, enabled = name.isNotBlank()) {
+                val m = com.qigai.neon.agent.AgentRuntime.GroupMember(name.trim(), persona.trim())
+                custom.add(m); if (picked.size < 4) picked.add(m); name = ""; persona = ""
+            }
+            Spacer(Modifier.height(16.dp))
+            com.qigai.neon.ui.components.PillButton("开始群聊", modifier = Modifier.fillMaxWidth(), height = 46.dp, enabled = picked.size >= 2) { onCreate(picked.toList()) }
+        }
     }
 }
 

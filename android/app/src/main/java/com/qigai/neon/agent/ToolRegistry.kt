@@ -85,6 +85,7 @@ class ToolRegistry(
             ToolSpec("drive_search", "按文件名或全文搜索 Google Drive，留空列出最近修改的文件", objSchema("query" to "关键词")),
             ToolSpec("drive_read_file", "读取 Google Drive 文件的文本内容，文档和幻灯片导出为文本，表格导出为 CSV", objSchema("file_id" to "文件 ID", required = listOf("file_id"))),
             ToolSpec("drive_write_file", "向 Google Drive /Neon/附件 写入文本或 CSV 文件", objSchema("filename" to "文件名", "content" to "文件内容", required = listOf("filename", "content"))),
+            ToolSpec("agent_spawn", "派出子代理并行做互不依赖的事，最多 4 个，每个拿到一段完整的任务说明，各自用工具干完后把结果交回。适合同时查几个来源、对比几个选项、分头写几部分。子代理不能再派子代理", objSchema("tasks" to "JSON 字符串数组，每项是一个子代理的完整任务说明", required = listOf("tasks"))),
             ToolSpec("memory_search", "按关键词查用户的长期记忆，系统提示里没列出的旧记忆在这里找", objSchema("query" to "关键词", required = listOf("query"))),
             ToolSpec("memory_save", "用户明确要你记住或忘记某件事时调用。记住：给 text，身份和长期规则把 core 设为 true。忘记：给 forget_id", objSchema("text" to "一句完整的陈述", "core" to "true 或 false", "forget_id" to "要忘记的记忆 id，来自 memory_search")),
             ToolSpec("present_file", "把沙箱里做好的文件交给用户，对话里会显示成可打开、可分享的文件卡片。做完 Word、PDF、表格、图片、视频等交付物后调用", objSchema("path" to "文件在沙箱里的绝对路径，比如 /workspace/out/报告.docx", "title" to "卡片上显示的标题，可省略", required = listOf("path"))),
@@ -114,6 +115,7 @@ class ToolRegistry(
             ToolSpec("web_click", "点击内置浏览器页面上指定编号的元素", objSchema("index" to "元素编号", required = listOf("index"))),
             ToolSpec("web_type", "向内置浏览器页面上指定编号的输入框填入文字。不要用它填密码，密码用 web_fill", objSchema("index" to "输入框编号", "text" to "文字", "submit" to "true 时填完提交表单", required = listOf("index", "text"))),
             ToolSpec("web_fill", "用安全表单在当前页面填好账号和密码", objSchema("vault_id" to "安全表单编号", required = listOf("vault_id"))),
+            ToolSpec("browser_playwright", "开关内置浏览器的 Playwright 通道。start 后在沙箱里用 playwright-core 的 chromium.connectOverCDP('http://127.0.0.1:9222') 控制 Neon 的内置浏览器，带着它的登录状态；先用 web_open 打开一个页面。用完 stop。不支持无痕和下载", objSchema("action" to "start 或 stop", required = listOf("action"))),
             ToolSpec("web_save_login", "把内置浏览器里当前网站的登录状态（Cookie）存进安全表单，下次 web_open 带上编号就能直接登录", objSchema("label" to "可选，名字", "existing_id" to "可选，更新已有表单")),
             ToolSpec("webhook_trigger", "触发已配置的 Webhook 自动化端点", objSchema("payload" to "JSON 负载", required = listOf("payload"))),
         )
@@ -138,8 +140,20 @@ class ToolRegistry(
         return if (hands) noWeb else noWeb.filterNot { it.name.startsWith("hands_") }
     }
 
+    /** Set when a Hands tool found the accessibility service off; the chat shows one card for it. */
+    val handsBlocked = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    /** Runs sub-agent tasks in parallel; set by the app once the runtime exists. Takes the parent session id and the tasks. */
+    var spawner: (suspend (String, List<String>) -> String)? = null
+
     suspend fun execute(sessionId: String, toolName: String, inputJson: String): ToolOutcome {
-        val out = runCatching { executeRaw(sessionId, toolName, inputJson) }.getOrElse { "ERROR: ${it.message ?: it.javaClass.simpleName}" }
+        var out = runCatching { executeRaw(sessionId, toolName, inputJson) }.getOrElse { "ERROR: ${it.message ?: it.javaClass.simpleName}" }
+        if (toolName.startsWith("hands_") && out.contains("无障碍服务未开启")) {
+            val first = !handsBlocked.value
+            handsBlocked.value = true
+            out = if (first) "ERROR: 无障碍没开，界面上已经给用户一张去开启的卡片。不要再调用 hands 工具，也不用再提醒用户，改用别的办法完成，或告诉用户开启后可以再让你操作"
+                else "ERROR: 无障碍还没开，不要再调用 hands 工具"
+        }
         val clipped = if (out.length <= MAX_RESULT) out
             else out.take(6_000) + "\n…中间省略 ${out.length - MAX_RESULT} 字…\n" + out.takeLast(MAX_RESULT - 6_000)
         return ToolOutcome(clipped, isError = out.startsWith("ERROR") || out.startsWith("DENIED"))
@@ -236,6 +250,15 @@ class ToolRegistry(
                 else "OK: 已交给用户 ${f.name}，${f.length()} 字节"
             }
             "space_cards" -> space?.handleTool(args) ?: "ERROR: 空间不可用"
+            "agent_spawn" -> {
+                val sp = spawner ?: return "ERROR: 子代理不可用"
+                val el = args["tasks"] ?: return "ERROR: 缺少 tasks"
+                val list = runCatching {
+                    if (el is kotlinx.serialization.json.JsonArray) el.map { it.jsonPrimitive.content }
+                    else kotlinx.serialization.json.Json.parseToJsonElement(el.jsonPrimitive.content).jsonArray.map { it.jsonPrimitive.content }
+                }.getOrElse { listOf(el.jsonPrimitive.content) }.map { it.trim() }.filter { it.isNotBlank() }
+                if (list.isEmpty()) "ERROR: tasks 为空" else sp(sessionId, list.take(4))
+            }
             "memory_search" -> memory?.search(args["query"]?.jsonPrimitive?.content.orEmpty()) ?: "ERROR: 记忆不可用"
             "memory_save" -> {
                 val m = memory ?: return "ERROR: 记忆不可用"
@@ -289,6 +312,15 @@ class ToolRegistry(
                 val item = vault?.get(args["vault_id"]?.jsonPrimitive?.content.orEmpty()) ?: return "ERROR: 没有这个安全表单"
                 if (item.kind != "login") return "ERROR: 这个安全表单只有 Cookie，用 web_open 带上 vault_id"
                 if (b.fillLogin(item)) "OK: 已填好账号和密码，点登录按钮提交" else "ERROR: 当前页面没有对应 ${item.site} 的登录框"
+            }
+            "browser_playwright" -> {
+                val b = browser ?: return "ERROR: 浏览器不可用"
+                if (args["action"]?.jsonPrimitive?.content == "stop") { b.cdp.stop(); "OK: 已关闭 Playwright 通道" }
+                else {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { b.webView() }
+                    val ep = runCatching { b.cdp.start() }.getOrElse { return "ERROR: 通道没开起来：${it.message}" }
+                    "OK: Playwright 通道已开，在沙箱里 npm i playwright-core 后用 chromium.connectOverCDP('$ep')，browser.contexts()[0].pages() 里是内置浏览器当前的页面"
+                }
             }
             "web_save_login" -> {
                 val b = browser ?: return "ERROR: 浏览器不可用"

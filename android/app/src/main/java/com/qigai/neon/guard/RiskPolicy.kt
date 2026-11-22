@@ -41,6 +41,7 @@ object RiskPolicy {
         "memory_read",
         "memory_search",
         "memory_save",
+        "agent_spawn",
         "skill_list",
     )
 

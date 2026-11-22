@@ -40,6 +40,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 
 class NeonApp : Application() {
     lateinit var container: NeonContainer
@@ -155,6 +157,25 @@ class NeonContainer(val app: NeonApp) {
             .trim().trim('"', '“', '”', '「', '」', '《', '》', '。', '.').removePrefix("标题：").removePrefix("标题:").trim().take(24)
         if (title.isNotBlank() && db.conversations().get(cid)?.title == conv.title) db.conversations().rename(cid, title, conv.updatedAt)
     }
+    private val subagentSessions = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    init {
+        tools.spawner = spawner@{ parent, tasks ->
+            if (parent in subagentSessions) return@spawner "ERROR: 子代理不能再派子代理，自己完成"
+            val cfg = defaultTurnConfig() ?: return@spawner "ERROR: 没有可用的模型"
+            val results = kotlinx.coroutines.coroutineScope {
+                tasks.mapIndexed { i, t ->
+                    async {
+                        runCatching {
+                            agent.runHeadless("子代理 ${i + 1}：" + t.take(16), t, cfg, onCreated = { subagentSessions.add(it) })
+                        }.fold({ it.second.ifBlank { "（没有文字结果）" } }, { "失败：" + (it.message ?: "未知错误") })
+                    }
+                }.awaitAll()
+            }
+            results.mapIndexed { i, r -> "## 子代理 ${i + 1}\n任务：${tasks[i].take(80)}\n\n${r.take(4000)}" }.joinToString("\n\n")
+        }
+    }
+
     private val deepseekAsr: suspend (ByteArray) -> String = { wav -> deepseek.transcribe(wav) }
     val voice = VoiceInput(app, scope) {
         if (tokens.has(EncryptedTokenStore.DEEPSEEK)) deepseekAsr else null
