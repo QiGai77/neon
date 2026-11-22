@@ -1,5 +1,6 @@
 package com.qigai.neon.ui.skills
 
+import com.qigai.neon.ui.theme.neonBackdrop
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -110,7 +111,7 @@ fun SkillsContent(
     onMarket: (() -> Unit)? = null,
 ) {
     val c = Neon.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().neonBackdrop().statusBarsPadding()) {
         PageTopBar("技能库", onBack) { IconBtn(Lucide.Plus, "添加技能", onClick = onAdd) }
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),

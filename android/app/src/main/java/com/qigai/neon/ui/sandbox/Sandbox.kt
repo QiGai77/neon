@@ -1,5 +1,6 @@
 package com.qigai.neon.ui.sandbox
 
+import com.qigai.neon.ui.theme.neonBackdrop
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -107,7 +108,7 @@ fun SandboxContent(
     onEnv: (DevEnvUi) -> Unit = {},
 ) {
     val c = Neon.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().neonBackdrop().statusBarsPadding().navigationBarsPadding()) {
         Box(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp).height(48.dp)) {
             IconBtn(Lucide.ArrowLeft, "返回", Modifier.align(Alignment.CenterStart), onClick = onBack)
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {

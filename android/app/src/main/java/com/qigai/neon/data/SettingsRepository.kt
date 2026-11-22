@@ -29,6 +29,7 @@ data class AppSettings(
     val opsCollapsed: Boolean get() = raw[SettingsRepository.OPS_COLLAPSED] == "1"
     val workspaceConnected: Boolean get() = raw[SettingsRepository.WORKSPACE] == "1"
     /** Ordered drawer cards the user kept; null = default set. */
+    val interests: List<String> get() = raw[SettingsRepository.INTERESTS]?.split(',')?.map { it.trim() }?.filter { it.isNotBlank() } ?: SettingsRepository.DEFAULT_INTERESTS
     val drawerCards: List<String> get() = raw[SettingsRepository.DRAWER_CARDS]?.split(',')?.filter { it.isNotBlank() } ?: SettingsRepository.DEFAULT_DRAWER
 }
 
@@ -52,6 +53,9 @@ class SettingsRepository(private val dao: SettingDao, scope: CoroutineScope) {
         const val OPS_COLLAPSED = "ops_collapsed"
         const val WORKSPACE = "workspace_connected"
         const val DRAWER_CARDS = "drawer_cards"
+        /** 速览 interests, comma separated */
+        const val INTERESTS = "glance_interests"
+        val DEFAULT_INTERESTS = listOf("AI Agent", "Jetpack Compose", "独立开发", "开源模型", "MCP")
         val DEFAULT_DRAWER = listOf("quota", "sandbox", "drive", "hubs")
         val ALL_DRAWER = listOf("quota", "sandbox", "drive", "hubs")
         const val DEFAULT_DEEPSEEK_BASE = "https://api.deepseek.com"

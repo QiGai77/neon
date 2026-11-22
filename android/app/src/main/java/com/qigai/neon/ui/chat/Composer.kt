@@ -59,6 +59,7 @@ import com.qigai.neon.ui.components.ChipStyle
 import com.qigai.neon.ui.components.NeonChip
 import com.qigai.neon.ui.components.OutlineCircle
 import com.qigai.neon.ui.components.floating
+import com.qigai.neon.ui.theme.glass
 import com.qigai.neon.ui.components.formatClock
 import com.qigai.neon.ui.icons.Lucide
 import com.qigai.neon.ui.theme.Neon
@@ -108,7 +109,7 @@ fun Composer(
         Column(
             Modifier.fillMaxWidth()
                 .floating(NeonShapes.composer, c.shadow)
-                .clip(NeonShapes.composer).background(c.bgSurface).border(1.dp, c.borderCard, NeonShapes.composer)
+                .glass(NeonShapes.composer, strong = true)
                 .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp)
         ) {
             AnimatedContent(
@@ -215,7 +216,7 @@ private fun SkillPalette(skills: List<PaletteSkill>, query: String, onPick: (Pal
     }
     Column(
         modifier.fillMaxWidth().floating(NeonShapes.composer, c.shadow, 14.dp)
-            .clip(NeonShapes.composer).background(c.bgSurface).border(1.dp, c.borderCard, NeonShapes.composer)
+            .glass(NeonShapes.composer, strong = true)
             .padding(start = 12.dp, end = 12.dp, top = 14.dp, bottom = 12.dp)
     ) {
         Row(Modifier.padding(start = 6.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {

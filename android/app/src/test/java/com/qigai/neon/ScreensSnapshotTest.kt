@@ -98,6 +98,59 @@ class ScreensSnapshotTest {
         rule.onRoot().captureRoboImage("build/outputs/roborazzi/$name-${if (dark) "dark" else "light"}.png")
     }
 
+    // ───────── v0.4 home tabs ─────────
+
+    @Composable
+    private fun HomeFrame(tab: com.qigai.neon.ui.home.HomeTab, content: @Composable () -> Unit) {
+        Box(Modifier.fillMaxSize()) {
+            androidx.compose.runtime.CompositionLocalProvider(com.qigai.neon.ui.home.LocalBottomBarInset provides 72.dp) { content() }
+            com.qigai.neon.ui.home.NavPill(
+                tab, {}, chatBadge = 1, haze = null,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(start = 18.dp, end = 18.dp, bottom = 10.dp),
+            )
+        }
+    }
+
+    private val feed = com.qigai.neon.feed.FeedState(
+        repos = listOf(
+            com.qigai.neon.feed.FeedRepo("sample/agent-runtime", "Sample repository description for the snapshot, two lines long so the card wraps like a real one.", 2310, "Kotlin", "https://github.com", "AI Agent", "2026-11-12"),
+            com.qigai.neon.feed.FeedRepo("sample/compose-glass", "Sample description.", 640, "Kotlin", "https://github.com", "Jetpack Compose", "2026-11-15"),
+        ),
+    )
+
+    private fun home(tab: com.qigai.neon.ui.home.HomeTab) = @Composable {
+        HomeFrame(tab) {
+            when (tab) {
+                com.qigai.neon.ui.home.HomeTab.CHAT -> Chat(listOf(ask, answer, results))
+                com.qigai.neon.ui.home.HomeTab.GLANCE -> com.qigai.neon.ui.glance.GlanceContent(feed, SettingsRepository.DEFAULT_INTERESTS, {}, {}, {}, {}, today = "11 月 22 日 星期日")
+                com.qigai.neon.ui.home.HomeTab.SPACE -> com.qigai.neon.ui.space.SpaceContent(
+                    com.qigai.neon.ui.space.SpaceData(
+                        skillNames = listOf("账单整理", "查快递", "周报生成"), connectors = 8, connected = 3,
+                        taskTitles = listOf("晨间早报"), tasksEnabled = 1, memory = listOf("SOUL.md", "USER.md", "GLOBAL.md"),
+                        sandbox = com.qigai.neon.sandbox.SandboxStatus.Ready("aarch64", true), handsEnabled = true,
+                    ),
+                ) {}
+                com.qigai.neon.ui.home.HomeTab.ME -> com.qigai.neon.ui.me.MeContent(
+                    com.qigai.neon.ui.me.MeData(
+                        modelLabel = "DeepSeek V4 Pro",
+                        quota = GoUsage(GoWindow(68.0, null, null), GoWindow(41.0, null, null), GoWindow(23.0, null, null), now),
+                        opsCollapsed = true, version = "0.4.0",
+                    ),
+                    com.qigai.neon.ui.me.MeActions(),
+                )
+            }
+        }
+    }
+
+    @Test fun v04ChatLight() = shot("v04-01-chat", content = home(com.qigai.neon.ui.home.HomeTab.CHAT))
+    @Test fun v04ChatDark() = darkShot("v04-01-chat", content = home(com.qigai.neon.ui.home.HomeTab.CHAT))
+    @Test fun v04GlanceLight() = shot("v04-02-glance", content = home(com.qigai.neon.ui.home.HomeTab.GLANCE))
+    @Test fun v04GlanceDark() = darkShot("v04-02-glance", content = home(com.qigai.neon.ui.home.HomeTab.GLANCE))
+    @Test fun v04SpaceLight() = shot("v04-03-space", content = home(com.qigai.neon.ui.home.HomeTab.SPACE))
+    @Test fun v04SpaceDark() = darkShot("v04-03-space", content = home(com.qigai.neon.ui.home.HomeTab.SPACE))
+    @Test fun v04MeLight() = shot("v04-04-me", content = home(com.qigai.neon.ui.home.HomeTab.ME))
+    @Test fun v04MeDark() = darkShot("v04-04-me", content = home(com.qigai.neon.ui.home.HomeTab.ME))
+
     // ───────── sample data ─────────
 
     private fun msg(id: String, role: String, blocks: List<ContentBlock>, status: String = "done", ago: Long = 0, model: String? = null, out: Int? = null) =

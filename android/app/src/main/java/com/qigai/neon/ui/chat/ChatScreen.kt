@@ -1,5 +1,6 @@
 package com.qigai.neon.ui.chat
 
+import com.qigai.neon.ui.theme.neonBackdrop
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
@@ -87,6 +88,9 @@ fun ChatScreen(vm: MainViewModel, openSheet: (SheetKind?) -> Unit, onOpenSetting
     val scope = rememberCoroutineScope()
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val authorizeDrive = rememberDriveAuthorizer(vm)
+    val hideBar = com.qigai.neon.ui.home.LocalHideBottomBar.current
+    LaunchedEffect(drawer.targetValue) { hideBar.value = drawer.targetValue == DrawerValue.Open }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { hideBar.value = false } }
 
     val messages by vm.messages.collectAsState()
     val conv by vm.currentConversation.collectAsState()
@@ -123,8 +127,8 @@ fun ChatScreen(vm: MainViewModel, openSheet: (SheetKind?) -> Unit, onOpenSetting
         scrimColor = if (c.isDark) Color.Black.copy(alpha = 0.62f) else Color(0xFF101113).copy(alpha = 0.26f),
         drawerContent = {
             ModalDrawerSheet(
-                drawerContainerColor = c.bgDrawer,
-                drawerShape = RectangleShape,
+                drawerContainerColor = Color.Transparent,
+                drawerShape = androidx.compose.foundation.shape.RoundedCornerShape(topEnd = 30.dp, bottomEnd = 30.dp),
                 modifier = Modifier.width(318.dp),
                 windowInsets = WindowInsets(0, 0, 0, 0),
             ) {
@@ -221,7 +225,7 @@ fun ChatContent(
             t.head == m.id || t.head in openTurns || turns.hasText.contains(m.id) || m.status == "error" || i == messages.lastIndex
         }
     }
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().imePadding()) {
+    Column(Modifier.fillMaxSize().neonBackdrop().statusBarsPadding().imePadding()) {
         ChatTopBar(
             title, modelLabel, onMenu, onNewChat, onModel,
             collapse = if (turns.byMessage.values.any { it.steps > 0 || it.thought }) opsCollapsed else null,
@@ -263,11 +267,6 @@ fun ChatContent(
                     }
                 }
             }
-            // content slides under the bar softly instead of being cut
-            Box(
-                Modifier.fillMaxWidth().height(18.dp)
-                    .background(Brush.verticalGradient(listOf(c.bgCanvas, c.bgCanvas.copy(alpha = 0f))))
-            )
             androidx.compose.animation.AnimatedVisibility(
                 visible = voice.recording || voice.transcribing,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp),
@@ -287,7 +286,7 @@ fun ChatContent(
             onPlus = onPlus, onSend = onSend, onStop = onStop,
             skills = skills, hands = hands, onHands = onHands,
             onPickSkill = { onInput("/${it.trigger} "); onPalette(false) },
-            modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 10.dp),
+            modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 10.dp + com.qigai.neon.ui.home.LocalBottomBarInset.current),
         )
     }
 }

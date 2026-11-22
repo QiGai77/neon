@@ -74,13 +74,13 @@ fun NeonRoot(vm: MainViewModel) {
     com.qigai.neon.ui.caps.SentinelHost(vm, onSandboxScreen = route == "sandbox") {
     NeonSheets(vm, sheet, { sheet = it }) {
         NavHost(
-            nav, startDestination = "chat",
+            nav, startDestination = "home",
             enterTransition = { slideInHorizontally(spring(0.9f, 420f)) { it / 5 } + fadeIn(tween(180)) },
             exitTransition = { fadeOut(tween(140)) + scaleOut(targetScale = 0.97f) },
             popEnterTransition = { fadeIn(tween(180)) + scaleIn(initialScale = 0.97f) },
             popExitTransition = { slideOutHorizontally(spring(0.9f, 420f)) { it / 5 } + fadeOut(tween(140)) },
         ) {
-            composable("chat") { ChatScreen(vm, openSheet = { sheet = it }, onOpenSettings = { nav.navigate("settings") }, onNavigate = { nav.navigate(it) }) }
+            composable("home") { com.qigai.neon.ui.home.HomeScaffold(vm, openSheet = { sheet = it }, onNavigate = { nav.navigate(it) }) }
             composable("settings") { SettingsScreen(vm, openSheet = { sheet = it }, onBack = { nav.popBackStack() }) }
             composable("connectors") { com.qigai.neon.ui.caps.ConnectorsRoute(vm, onBack = { nav.popBackStack() }, onOpenHands = { nav.navigate("hands") }, onMarket = { nav.navigate("connector-market") }) }
             composable("connector-market") { com.qigai.neon.ui.market.ConnectorMarketRoute(vm, onBack = { nav.popBackStack() }) }

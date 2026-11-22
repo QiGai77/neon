@@ -1,5 +1,6 @@
 package com.qigai.neon.ui.sider
 
+import com.qigai.neon.ui.theme.glass
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.border
 import androidx.compose.animation.core.Animatable
@@ -201,7 +202,7 @@ fun SiderContent(
 ) {
     val c = Neon.colors
     var editing by remember { mutableStateOf(startEditing) }
-    Column(Modifier.fillMaxSize().background(c.bgDrawer).statusBarsPadding().navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().glass(androidx.compose.foundation.shape.RoundedCornerShape(topEnd = 30.dp, bottomEnd = 30.dp), fill = c.bgDrawer.copy(alpha = if (c.isDark) 0.86f else 0.82f)).statusBarsPadding().navigationBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 6.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             BlobLogo(26.dp)
             Spacer(Modifier.width(10.dp))
@@ -539,7 +540,7 @@ private fun HubGrid(h: HubCounts, onOpen: (Hub) -> Unit) {
 private fun HubTile(icon: ImageVector, title: String, meta: String, modifier: Modifier, onClick: () -> Unit) {
     val c = Neon.colors
     Column(
-        modifier.clip(NeonShapes.card).background(c.bgSurface).border(1.dp, c.borderCard, NeonShapes.card)
+        modifier.glass(NeonShapes.card)
             .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

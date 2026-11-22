@@ -1,5 +1,6 @@
 package com.qigai.neon.ui.connectors
 
+import com.qigai.neon.ui.theme.neonBackdrop
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -115,7 +116,7 @@ fun ConnectorsContent(
     connectedCount: Int = 0,
 ) {
     val c = Neon.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().neonBackdrop().statusBarsPadding()) {
         PageTopBar("连接器", onBack) { IconBtn(Lucide.Store, "连接器市场", onClick = onSearch) }
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),

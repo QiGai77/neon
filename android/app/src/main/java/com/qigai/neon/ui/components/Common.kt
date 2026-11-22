@@ -45,21 +45,21 @@ import com.qigai.neon.R
 import com.qigai.neon.ui.theme.Neon
 import com.qigai.neon.ui.theme.NeonShapes
 import com.qigai.neon.ui.theme.NeonType
+import com.qigai.neon.ui.theme.glass
 
 // ───────────────────────── surfaces ─────────────────────────
 
-/** White (dark: #161616) card with a 1dp warm edge, radius 20. */
+/** Liquid glass card, radius 20: translucent fill, bright edge, faint sheen. */
 @Composable
 fun NeonCard(
     modifier: Modifier = Modifier,
     padding: PaddingValues = PaddingValues(16.dp),
     shape: Shape = NeonShapes.card,
-    color: Color = Neon.colors.bgSurface,
+    color: Color? = null,
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val c = Neon.colors
-    var m = modifier.fillMaxWidth().clip(shape).background(color).border(1.dp, c.borderCard, shape)
+    var m = modifier.fillMaxWidth().glass(shape, fill = color)
     if (onClick != null) m = m.clickable(onClick = onClick)
     Column(m.padding(padding), content = content)
 }
@@ -70,7 +70,7 @@ fun Modifier.floating(shape: Shape, color: Color, elevation: Dp = 18.dp): Modifi
 
 @Composable
 fun BlobLogo(size: Dp, modifier: Modifier = Modifier) {
-    Image(painterResource(R.drawable.neon_blob), contentDescription = "Neon", modifier = modifier.size(size))
+    NeonOrb(size, modifier)
 }
 
 /** Rounded square that holds a line icon (drawer cards, settings rows, tiles). */
@@ -114,7 +114,7 @@ fun NeonChip(
 ) {
     val c = Neon.colors
     val bg by animateColorAsState(
-        when (style) { ChipStyle.Outline -> Color.Transparent; ChipStyle.Soft -> c.bgSubtle; ChipStyle.Active -> c.chipActive },
+        when (style) { ChipStyle.Outline -> Color.Transparent; ChipStyle.Soft -> com.qigai.neon.ui.theme.Glass.tokens.tile; ChipStyle.Active -> c.chipActive },
         label = "chipBg",
     )
     val fg = textColor ?: when (style) { ChipStyle.Active -> c.onChipActive; ChipStyle.Soft -> c.inkSecondary; ChipStyle.Outline -> c.inkSecondary }
@@ -205,7 +205,7 @@ fun PillButton(
     val c = Neon.colors
     val (bg, fg, edge) = when (kind) {
         ButtonKind.Primary -> Triple(if (enabled) c.accent else c.bgSubtle, if (enabled) c.onAccent else c.inkTertiary, Color.Transparent)
-        ButtonKind.Secondary -> Triple(c.bgSurface, c.inkPrimary, c.borderHairline)
+        ButtonKind.Secondary -> Triple(com.qigai.neon.ui.theme.Glass.tokens.tile, c.inkPrimary, c.borderHairline)
         ButtonKind.Danger -> Triple(c.bgSurface, c.danger, c.danger.copy(alpha = 0.45f))
     }
     var m = modifier.height(height).clip(NeonShapes.capsule).background(bg)

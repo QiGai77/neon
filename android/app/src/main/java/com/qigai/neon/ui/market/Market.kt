@@ -1,5 +1,6 @@
 package com.qigai.neon.ui.market
 
+import com.qigai.neon.ui.theme.neonBackdrop
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -170,7 +171,7 @@ fun ConnectorMarketContent(
     onMore: (() -> Unit)?,
 ) {
     val c = Neon.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().neonBackdrop().statusBarsPadding()) {
         PageTopBar("连接器市场", onBack)
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),
@@ -392,7 +393,7 @@ fun SkillMarketContent(
     onMore: (() -> Unit)?,
 ) {
     val c = Neon.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().neonBackdrop().statusBarsPadding()) {
         PageTopBar("技能市场", onBack)
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),

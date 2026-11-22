@@ -1,5 +1,6 @@
 package com.qigai.neon.ui.settings
 
+import com.qigai.neon.ui.theme.neonBackdrop
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -104,7 +105,7 @@ fun SettingsContent(
     onDriveAuthorize: () -> Unit,
 ) {
     val c = Neon.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().neonBackdrop().statusBarsPadding()) {
         PageTopBar("设置", onBack)
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()

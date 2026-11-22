@@ -1,5 +1,6 @@
 package com.qigai.neon.ui.memory
 
+import com.qigai.neon.ui.theme.neonBackdrop
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -105,7 +106,7 @@ fun MemoryTasksContent(
     onRerun: (TaskUi) -> Unit,
 ) {
     val c = Neon.colors
-    Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().neonBackdrop().statusBarsPadding()) {
         PageTopBar("记忆与任务", onBack) { IconBtn(Lucide.Plus, "新建任务", onClick = onAdd) }
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),

@@ -95,6 +95,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toast(msg: String?) { _toast.value = msg }
 
+    // ---------- 速览 ----------
+    private val githubFeed = com.qigai.neon.feed.GitHubFeed(com.qigai.neon.provider.Http.client) { c.tokens.getConnectorToken("github") }
+    private val _feed = MutableStateFlow(com.qigai.neon.feed.FeedState())
+    val feed: StateFlow<com.qigai.neon.feed.FeedState> = _feed.asStateFlow()
+
+    fun refreshFeed(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (_feed.value.loading) return
+        if (!force && _feed.value.repos.isNotEmpty() && now - _feed.value.fetchedAt < 30 * 60_000L) return
+        _feed.value = _feed.value.copy(loading = true, error = null)
+        viewModelScope.launch {
+            _feed.value = try {
+                val repos = githubFeed.fetch(settings.value.interests)
+                com.qigai.neon.feed.FeedState(repos = repos, fetchedAt = System.currentTimeMillis())
+            } catch (e: Exception) {
+                _feed.value.copy(loading = false, error = e.message ?: "加载失败")
+            }
+        }
+    }
+
+    fun setInterests(list: List<String>) = viewModelScope.launch {
+        c.settings.put(SettingsRepository.INTERESTS, list.map { it.replace(",", " ").trim() }.filter { it.isNotBlank() }.distinct().joinToString(","))
+        _feed.value = _feed.value.copy(fetchedAt = 0L)
+    }
+
+    /** Starts a fresh chat with [prompt]. Returns false when Neon is busy or no model is connected. */
+    fun askNeon(prompt: String): Boolean {
+        if (agentState.value.busy) { toast("Neon 还在忙上一件事"); return false }
+        if (turnConfig() == null) { toast("请先连接一个模型"); return false }
+        _current.value = null
+        return send(prompt)
+    }
+
     // ---------- provider selection ----------
     fun activeProviderId(s: AppSettings = settings.value, keys: Set<String> = configured.value): ProviderId? {
         val has = { p: ProviderId -> keyName(p) in keys }
