@@ -105,8 +105,10 @@ class HandsOperator(
             return "BLOCKED: 检测到密码框，已自动暂停并交由用户手动输入。"
         }
 
-        if (assessment.level == RiskLevel.CONFIRM) {
-            val decision = riskGate.requestApproval(
+        run {
+            val decision = riskGate.gate(
+                type = com.qigai.neon.guard.ApprovalPolicy.typeOf("hands_tap", node.label),
+                base = assessment.level, write = true,
                 request = PendingGuardRequest(
                     title = "确认这一步",
                     targetLabel = "点击「${node.label}」",

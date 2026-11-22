@@ -61,6 +61,7 @@ import com.qigai.neon.ui.sider.SandboxUi
 import com.qigai.neon.ui.sider.HubCounts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import com.qigai.neon.ui.vault.VaultFormContent
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -138,7 +139,9 @@ class ScreensSnapshotTest {
                     com.qigai.neon.ui.me.MeData(
                         modelLabel = "DeepSeek V4 Pro",
                         quota = GoUsage(GoWindow(68.0, null, null), GoWindow(41.0, null, null), GoWindow(23.0, null, null), now),
-                        opsCollapsed = true, version = "0.4.0",
+                        opsCollapsed = true, version = "0.4.5", hands = true,
+                        userCall = "QiGai", userName = "QiGai", userBio = "南京，独立开发者，在做 Neon",
+                        approvalSummary = "总是允许，付款要指纹", chatStyle = com.qigai.neon.data.ChatStyle.BUBBLE, memoryCount = 12,
                     ),
                     com.qigai.neon.ui.me.MeActions(),
                 )
@@ -182,8 +185,65 @@ class ScreensSnapshotTest {
     @Test fun v04GlanceDark() = darkShot("v04-02-glance", content = home(com.qigai.neon.ui.home.HomeTab.GLANCE))
     @Test fun v04SpaceLight() = shot("v04-03-space", content = home(com.qigai.neon.ui.home.HomeTab.SPACE))
     @Test fun v04SpaceDark() = darkShot("v04-03-space", content = home(com.qigai.neon.ui.home.HomeTab.SPACE))
-    @Test fun v04MeLight() = shot("v04-04-me", content = home(com.qigai.neon.ui.home.HomeTab.ME))
-    @Test fun v04MeDark() = darkShot("v04-04-me", content = home(com.qigai.neon.ui.home.HomeTab.ME))
+
+    // ───────── v0.4.5 我的、性格、关于你、动手前、对话样式 ─────────
+
+    private val persona = com.qigai.neon.ui.me.PersonaState("Neon", "QiGai", com.qigai.neon.data.Tone.CRISP, "少用感叹号，技术词保留英文，先给结论再解释")
+    private val about = com.qigai.neon.ui.me.AboutState(
+        "QiGai", "南京", "独立开发者", "在做 Neon，一个安卓上的 AI 助手。熟悉 Kotlin 和 Compose，主力模型是 DeepSeek。周末喜欢骑车，常去玄武湖。",
+        listOf("用中文", "代码给完整文件"),
+    )
+    private val perms = com.qigai.neon.guard.ApprovalSettings(
+        mode = com.qigai.neon.guard.ApprovalMode.ALWAYS_ALLOW,
+        overrides = mapOf(com.qigai.neon.guard.ActionType.PAYMENT to true),
+    )
+    private val billAsk = msg("u9", "user", listOf(ContentBlock.Text("帮我把本月账单整理成表格，再查一下快递到哪了")), ago = 9000)
+    private val billAnswer = msg("a9", "assistant", listOf(
+        ContentBlock.Thinking("读邮件，整理表格，查快递", durationMs = 6000),
+        ContentBlock.ToolUse("t91", "gmail_list_messages", "{\"query\":\"账单\"}"),
+        ContentBlock.ToolUse("t92", "sandbox_exec", "{\"command\":\"python3 bills.py\"}"),
+        ContentBlock.Text("整理好了，4 封账单合计 ¥1,286.40。顺丰包裹在新街口派送中，今天 18:00 前送到。"),
+        ContentBlock.ToolUse("t93", "present_file", "{\"path\":\"/workspace/out/11月账单.xlsx\"}"),
+    ), ago = 5000, model = "deepseek-v4-pro", out = 212)
+    private val billResults = msg("r9", "user", listOf(ContentBlock.ToolResult("t91", "4"), ContentBlock.ToolResult("t92", "ok"), ContentBlock.ToolResult("t93", "ok")), ago = 5200)
+    private val remindAsk = msg("u10", "user", listOf(ContentBlock.Text("谢谢，明天提醒我还信用卡")), ago = 3000)
+    private val remindAnswer = msg("a10", "assistant", listOf(ContentBlock.Text("好，明天 09:00 提醒你。")), ago = 2000, model = "deepseek-v4-pro", out = 12)
+
+    @Composable
+    private fun StyledChat(bubble: Boolean) = ChatContent(
+        title = "账单与快递", modelLabel = "DeepSeek V4 Pro", messages = listOf(billAsk, billAnswer, billResults, remindAsk, remindAnswer), busy = false,
+        input = "", onInput = {}, paletteOpen = false, onPalette = {}, effort = "high", onEffort = {}, voice = VoiceState(),
+        onMenu = {}, onNewChat = {}, onModel = {}, onConnectDeepSeek = {}, onConnectGo = {}, onRegenerate = {},
+        onMic = {}, onVoiceCancel = {}, onVoiceConfirm = {}, onPlus = {}, onSend = {}, onStop = {},
+        skills = skills, opsCollapsed = true, bubble = bubble,
+    )
+
+    @Test fun v045MeDark() = darkShot("v045-01-me", content = home(com.qigai.neon.ui.home.HomeTab.ME))
+    @Test fun v045MeLight() = shot("v045-01-me", content = home(com.qigai.neon.ui.home.HomeTab.ME))
+    @Test fun v045PersonaDark() = darkShot("v045-02-persona") { com.qigai.neon.ui.me.PersonaContent(persona, {}, {}, {}) }
+    @Test fun v045PersonaLight() = shot("v045-02-persona") { com.qigai.neon.ui.me.PersonaContent(persona, {}, {}, {}) }
+    @Test fun v045AboutDark() = darkShot("v045-03-about") { com.qigai.neon.ui.me.AboutYouContent(about, 12, {}, {}, {}, {}) }
+    @Test fun v045AboutLight() = shot("v045-03-about") { com.qigai.neon.ui.me.AboutYouContent(about, 12, {}, {}, {}, {}) }
+    @Test fun v045PermsDark() = darkShot("v045-04-perms") { com.qigai.neon.ui.me.PermissionsContent(perms, true, {}) }
+    @Test fun v045PermsLight() = shot("v045-04-perms") { com.qigai.neon.ui.me.PermissionsContent(perms, true, {}) }
+    @Test fun v045ChatDocDark() = darkShot("v045-05-chat-doc", content = @Composable { HomeFrame(com.qigai.neon.ui.home.HomeTab.CHAT) { StyledChat(false) } })
+    @Test fun v045ChatDocLight() = shot("v045-05-chat-doc", content = @Composable { HomeFrame(com.qigai.neon.ui.home.HomeTab.CHAT) { StyledChat(false) } })
+    @Test fun v045ChatBubbleDark() = darkShot("v045-06-chat-bubble", content = @Composable { HomeFrame(com.qigai.neon.ui.home.HomeTab.CHAT) { StyledChat(true) } })
+    @Test fun v045ChatBubbleLight() = shot("v045-06-chat-bubble", content = @Composable { HomeFrame(com.qigai.neon.ui.home.HomeTab.CHAT) { StyledChat(true) } })
+    @Test fun v045VaultDark() = darkShot("v045-07-vault") {
+        com.qigai.neon.ui.vault.VaultListContent(listOf(
+            com.qigai.neon.vault.VaultMeta("vf_3a9c1e07b2", "login", "github.com", "github.com", "Qi•••7", true, 0, now),
+            com.qigai.neon.vault.VaultMeta("vf_81d0c4aa5f", "cookie", "bilibili.com", "bilibili.com", "", false, 6, now),
+        ), {}, {}, {}, {})
+    }
+    @Test fun v045VaultFormDark() = darkShot("v045-08-vault-form") {
+        NeonSheetHost(open = true, onDismiss = {}, content = { StyledChat(true) }) {
+            VaultFormContent(
+                com.qigai.neon.ui.vault.VaultDraft(site = "github.com", user = "QiGai77", pass = "secret"), {},
+                "要登录 GitHub 才能看你的私有仓库", siteLocked = true, onCancel = {}, onSave = {},
+            )
+        }
+    }
 
     // ───────── sample data ─────────
 

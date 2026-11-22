@@ -71,6 +71,7 @@ fun NeonRoot(vm: MainViewModel) {
     crash?.let { text ->
         CrashDialog(text, onDismiss = { CrashLog.clear(ctx); crash = null })
     }
+    com.qigai.neon.ui.vault.VaultFormHost(vm) {
     com.qigai.neon.ui.caps.SentinelHost(vm, onSandboxScreen = route == "sandbox") {
     NeonSheets(vm, sheet, { sheet = it }) {
         NavHost(
@@ -88,8 +89,16 @@ fun NeonRoot(vm: MainViewModel) {
             composable("hands") { com.qigai.neon.ui.caps.HandsRoute(vm, onBack = { nav.popBackStack() }) }
             composable("skills") { com.qigai.neon.ui.caps.SkillsRoute(vm, onBack = { nav.popBackStack() }, onMarket = { nav.navigate("skill-market") }) }
             composable("sandbox") { com.qigai.neon.ui.caps.SandboxRoute(vm, onBack = { nav.popBackStack() }) }
+            composable("vault") { com.qigai.neon.ui.vault.VaultRoute(vm, onBack = { nav.popBackStack() }, onBrowser = { nav.navigate("browser") }) }
+            composable("browser") { com.qigai.neon.ui.vault.BrowserRoute(vm, onBack = { nav.popBackStack() }) }
+            composable("persona") { com.qigai.neon.ui.me.PersonaRoute(vm, onBack = { nav.popBackStack() }) }
+            composable("about-you") { com.qigai.neon.ui.me.AboutYouRoute(vm, onBack = { nav.popBackStack() }, onMemory = { nav.navigate("memory") }) }
+            composable("perms") { com.qigai.neon.ui.me.PermissionsRoute(vm, onBack = { nav.popBackStack() }) }
+            composable("phone-hands") { com.qigai.neon.ui.me.PhoneHandsRoute(vm, onBack = { nav.popBackStack() }, onHands = { nav.navigate("hands") }) }
+            composable("about-neon") { com.qigai.neon.ui.me.AboutNeonRoute(BuildConfig.VERSION_NAME, onBack = { nav.popBackStack() }) }
             composable("memory") { com.qigai.neon.ui.caps.MemoryTasksRoute(vm, onBack = { nav.popBackStack() }) }
         }
+    }
     }
     }
 }

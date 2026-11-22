@@ -297,6 +297,14 @@ fun MarkdownText(src: String, modifier: Modifier = Modifier) {
     }
 }
 
+/** Renders already-parsed blocks; the bubble chat style splits text from link cards with this. */
+@Composable
+fun MarkdownBlocks(blocks: List<MdBlock>, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        blocks.forEach { MdBlockView(it) }
+    }
+}
+
 @Composable
 private fun MdBlockView(b: MdBlock) {
     val c = Neon.colors

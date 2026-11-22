@@ -158,4 +158,8 @@ object Lucide {
     val Workflow: ImageVector by lazy { lucide("workflow", "M5.0 3.0H9.0a2.0 2.0 0 0 1 2.0 2.0V9.0a2.0 2.0 0 0 1 -2.0 2.0H5.0a2.0 2.0 0 0 1 -2.0 -2.0V5.0a2.0 2.0 0 0 1 2.0 -2.0Z", "M7 11v4a2 2 0 0 0 2 2h4", "M15.0 13.0H19.0a2.0 2.0 0 0 1 2.0 2.0V19.0a2.0 2.0 0 0 1 -2.0 2.0H15.0a2.0 2.0 0 0 1 -2.0 -2.0V15.0a2.0 2.0 0 0 1 2.0 -2.0Z") }
     val X: ImageVector by lazy { lucide("x", "M18 6 6 18", "m6 6 12 12") }
     val Zap: ImageVector by lazy { lucide("zap", "M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z") }
+    val CreditCard: ImageVector by lazy { lucide("credit-card", "M4.0 5.0H20.0a2.0 2.0 0 0 1 2.0 2.0V17.0a2.0 2.0 0 0 1 -2.0 2.0H4.0a2.0 2.0 0 0 1 -2.0 -2.0V7.0a2.0 2.0 0 0 1 2.0 -2.0Z", "M2 10h20") }
+    val Send: ImageVector by lazy { lucide("send", "M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z", "m21.854 2.147-10.94 10.939") }
+    val TriangleAlert: ImageVector by lazy { lucide("triangle-alert", "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3", "M12 9v4", "M12 17h.01") }
+    val ShieldCheck: ImageVector by lazy { lucide("shield-check", "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z", "m9 12 2 2 4-4") }
 }

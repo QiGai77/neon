@@ -64,6 +64,7 @@ class AgentRuntime(
     private val memory: com.qigai.neon.sysfiles.MemoryManager,
     private val guardPending: () -> Boolean,
     private val handsEnabled: () -> Boolean,
+    private val persona: () -> String = { "" },
     private val onTurnFinished: (conversationId: String) -> Unit,
 ) {
     private val _state = MutableStateFlow<AgentState>(AgentState.Idle)
@@ -90,6 +91,7 @@ class AgentRuntime(
             "需要时直接调用工具，不要编造结果；高危操作会由 Sentinel 请用户确认。" +
             "数学公式用 LaTeX，行内用 \$...\$，独立公式用 \$\$...\$\$。" +
             "用户上传的文件放在 /workspace/uploads。做出文件交付物（Word、PDF、表格、图片、视频等）时，先在沙箱里生成，再调用 present_file 交给用户；需要给出链接时单独一行写 Markdown 链接，会显示成卡片。" +
+            "需要登录网站时，先 vault_list 看有没有安全表单，没有就 vault_request 让用户填，再用 web_open 带上 vault_id 打开；你看不到也不要索要密码和 Cookie。" +
             "用户空间页的卡片可以用 space_cards 管理，遇到车票、航班、快递、出行时可以主动添加生活卡片。"
         fun newId() = UUID.randomUUID().toString()
     }
@@ -218,6 +220,7 @@ class AgentRuntime(
             ?.let { BlocksJson.decode(it.blocks).filterIsInstance<ContentBlock.Text>().joinToString("\n") { b -> b.text } }.orEmpty()
         val system = buildString {
             append(SYSTEM)
+            persona().takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
             memory.formatForPrompt().takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
             skills.catalogForPrompt().takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
             skills.matchByPrompt(lastUserText)?.let { sk ->

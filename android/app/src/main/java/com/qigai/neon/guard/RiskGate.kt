@@ -25,6 +25,23 @@ data class PendingGuardRequest(
 )
 
 class RiskGate {
+    /** Current 动手前 settings; wired to SettingsRepository by NeonApp. */
+    var approval: () -> ApprovalSettings = { ApprovalSettings() }
+
+    /**
+     * Applies 动手前 to one step: returns ALLOW_ONCE without a sheet when the settings let it through,
+     * otherwise shows the Sentinel sheet (with fingerprint when the settings want it).
+     */
+    suspend fun gate(type: ActionType, base: RiskLevel, write: Boolean, request: PendingGuardRequest, scopeKey: String): GuardDecision {
+        val s = approval()
+        if (!ApprovalPolicy.shouldAsk(s, type, base, write)) return GuardDecision.ALLOW_ONCE
+        val req = request.copy(
+            requireBiometric = ApprovalPolicy.needsBiometric(s, type, request.requireBiometric),
+            reasons = request.reasons.ifEmpty { listOf(if (type == ActionType.OTHER) "你设置了每一步都先问" else "${type.label}先问你") },
+        )
+        return requestApproval(req, scopeKey)
+    }
+
     private val leases = mutableMapOf<String, AccessLease>()
     private val _pendingRequest = MutableStateFlow<PendingGuardRequest?>(null)
     val pendingRequest: StateFlow<PendingGuardRequest?> = _pendingRequest.asStateFlow()

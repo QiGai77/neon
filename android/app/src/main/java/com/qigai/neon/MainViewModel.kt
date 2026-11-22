@@ -310,6 +310,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---------- settings ----------
+    fun putSetting(key: String, value: String?) = viewModelScope.launch { c.settings.put(key, value) }
     fun setTheme(m: ThemeMode) = viewModelScope.launch { c.settings.put(SettingsRepository.THEME, m.name) }
     fun setDeepThinkDefault(on: Boolean) = viewModelScope.launch {
         setEffort(if (on) "high" else "none")

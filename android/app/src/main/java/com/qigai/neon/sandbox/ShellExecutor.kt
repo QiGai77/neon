@@ -52,9 +52,13 @@ class ShellExecutor(
 
     suspend fun execute(command: String, timeoutSec: Long = 60L): ShellResult {
         val inspection = ShellGuard.inspect(command)
-        if (inspection.isHighRisk) {
+        // 总是允许: sandbox commands never stop to ask, whatever the type pins say.
+        val allowAll = riskGate.approval().mode == com.qigai.neon.guard.ApprovalMode.ALWAYS_ALLOW
+        if (inspection.isHighRisk && !allowAll) {
             appendLine(TerminalLine("⚠ ShellGuard 拦截: $command", isError = true))
-            val decision = riskGate.requestApproval(
+            val decision = riskGate.gate(
+                type = if (inspection.isDestructive) com.qigai.neon.guard.ActionType.DELETE else com.qigai.neon.guard.ActionType.OTHER,
+                base = com.qigai.neon.guard.RiskLevel.CONFIRM, write = false,
                 request = PendingGuardRequest(
                     title = "ShellGuard 已拦截高危命令",
                     targetLabel = command,

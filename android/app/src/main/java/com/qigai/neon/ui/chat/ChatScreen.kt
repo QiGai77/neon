@@ -176,6 +176,7 @@ fun ChatScreen(vm: MainViewModel, openSheet: (SheetKind?) -> Unit, onOpenSetting
             onStop = { vm.stop() },
             skills = skillDocs.map { d -> PaletteSkill(d.name, d.command.removePrefix("/"), com.qigai.neon.ui.icons.Lucide.Sparkles) },
             opsCollapsed = s.opsCollapsed,
+            bubble = s.chatStyle == com.qigai.neon.data.ChatStyle.BUBBLE,
             attachments = pending, onRemoveAttachment = { vm.removeAttachment(it) },
         )
     }
@@ -209,6 +210,7 @@ fun ChatContent(
     onStop: () -> Unit,
     skills: List<PaletteSkill> = emptyList(),
     opsCollapsed: Boolean = false,
+    bubble: Boolean = false,
     attachments: List<PendingAttachment> = emptyList(),
     onRemoveAttachment: (PendingAttachment) -> Unit = {},
     initialThinkOpen: Boolean = false,
@@ -259,6 +261,7 @@ fun ChatContent(
                                 ops = if (opsCollapsed && t != null && t.head == m.id && (t.steps > 0 || t.thought))
                                     OpsFold(t.steps, live = busy && t.last == messages.lastOrNull()?.id, open = !folded, thinkMs = t.thinkMs, activity = t.activity) else null,
                                 onOps = { t?.head?.let { h -> if (h in openTurns) openTurns.remove(h) else openTurns.add(h) } },
+                                bubble = bubble,
                             )
                         }
                     }

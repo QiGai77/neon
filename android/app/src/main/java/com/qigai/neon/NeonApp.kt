@@ -66,7 +66,7 @@ class NeonContainer(val app: NeonApp) {
     val drive = DriveSync(app)
 
     // capabilities
-    val riskGate = RiskGate()
+    val riskGate = RiskGate().also { g -> g.approval = { settings.state.value.approval } }
     val rootfs = RootfsManager(app)
     val proot = PRootKernel(rootfs)
     val shell = ShellExecutor(rootfs, proot, riskGate)
@@ -98,6 +98,9 @@ class NeonContainer(val app: NeonApp) {
     val tasks = TaskScheduler(app, db.scheduledTaskDao())
     val skillSynth = SkillSynthesizer(complete = { prompt -> completeOnce(prompt) }, skillRepository = skills)
 
+    val vault = com.qigai.neon.vault.Vault(app)
+    val vaultForms = com.qigai.neon.vault.VaultFormGate(vault)
+    val browser = com.qigai.neon.vault.WebBrowser(app, vault)
     val files = com.qigai.neon.sandbox.SandboxFiles({ rootfs.rootfsDir }, { rootfs.workspaceDir })
     val space = com.qigai.neon.space.SpaceStore(settings)
     val tools = ToolRegistry(
@@ -105,11 +108,13 @@ class NeonContainer(val app: NeonApp) {
         webhookConnector = webhook, mcpClient = mcp, localStdioMcp = localMcp,
         connectorDao = db.connectorDao(), mcpHub = mcpHub, tokenStore = tokens, riskGate = riskGate,
         files = files, space = space,
+        vault = vault, vaultForms = vaultForms, browser = browser,
     )
     val agent = AgentRuntime(
         db, tools, scope, skills, memory,
         guardPending = { riskGate.pendingRequest.value != null },
         handsEnabled = { settings.state.value.handsEnabled },
+        persona = { com.qigai.neon.agent.PersonaPrompt.build(settings.state.value) },
     ) { cid ->
         val s = settings.state.value
         if (s.driveConnected && s.driveAutoSync) DriveSync.enqueue(app, cid)

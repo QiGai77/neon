@@ -70,7 +70,14 @@ import com.qigai.neon.ui.theme.Neon
 import com.qigai.neon.ui.theme.NeonMotion
 import com.qigai.neon.ui.theme.NeonShapes
 import com.qigai.neon.ui.theme.NeonType
+import com.qigai.neon.ui.theme.glass
 import kotlinx.coroutines.delay
+
+/** Neon's reply bubble in the 气泡 style: 20/20/20/6, the small corner next to the orb. */
+val BubbleShape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 20.dp, bottomStart = 6.dp)
+
+/** Left indent of everything in a bubble-style reply: 26dp orb + 8dp gap. */
+private val BubbleIndent = 34.dp
 
 // ───────────────────────── user ─────────────────────────
 
@@ -285,11 +292,12 @@ fun AssistantMessage(
     showOps: Boolean = true,
     ops: OpsFold? = null,
     onOps: () -> Unit = {},
+    bubble: Boolean = false,
 ) {
+    if (bubble) { BubbleAssistant(m, isLast, busy, toolResults, onRegenerate, showOps, ops, onOps); return }
     val c = Neon.colors
     val blocks = remember(m.blocks) { BlocksJson.decode(m.blocks) }
     val streaming = m.status == "streaming"
-    val clip = LocalClipboardManager.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (ops != null) OpsFoldRow(ops, onOps)
         if (showOps && streaming && blocks.isEmpty()) ThinkingSection("", null, live = true, liveStart = m.createdAt)
@@ -323,19 +331,132 @@ fun AssistantMessage(
         }
         if (m.status == "error") ErrorCard(m.error, canRetry = isLast && !busy, onRegenerate)
         if (!streaming && (showOps || isLast || blocks.any { it is ContentBlock.Text && it.text.isNotBlank() })) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val text = blocks.plainText()
-                if (text.isNotBlank()) SmallAction(Lucide.Copy, "复制") { clip.setText(AnnotatedString(text)) }
-                if (isLast && !busy && m.status != "error") SmallAction(Lucide.RotateCw, "重新生成", onRegenerate)
-                Spacer(Modifier.width(6.dp))
-                val meta = listOfNotNull(
-                    m.model,
-                    if (m.status == "stopped") "已停止" else null,
-                    m.outputTokens?.let { "$it tokens" },
-                ).joinToString("  ")
-                Text(meta, style = NeonType.tnum(NeonType.overline()), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            MetaRow(m, blocks, isLast, busy, onRegenerate)
+        }
+    }
+}
+
+@Composable
+private fun MetaRow(m: MessageEntity, blocks: List<ContentBlock>, isLast: Boolean, busy: Boolean, onRegenerate: () -> Unit) {
+    val clip = LocalClipboardManager.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        val text = blocks.plainText()
+        if (text.isNotBlank()) SmallAction(Lucide.Copy, "复制") { clip.setText(AnnotatedString(text)) }
+        if (isLast && !busy && m.status != "error") SmallAction(Lucide.RotateCw, "重新生成", onRegenerate)
+        Spacer(Modifier.width(6.dp))
+        val meta = listOfNotNull(
+            m.model,
+            if (m.status == "stopped") "已停止" else null,
+            m.outputTokens?.let { "$it tokens" },
+        ).joinToString("  ")
+        Text(meta, style = NeonType.tnum(NeonType.overline()), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** One piece of a bubble-style reply: text that goes in a bubble, or a card that follows it. */
+private sealed interface BubblePart {
+    data class Text(val blocks: List<com.qigai.neon.markdown.MdBlock>) : BubblePart
+    data class Link(val url: String, val label: String?) : BubblePart
+    data class File(val path: String, val title: String?) : BubblePart
+}
+
+/**
+ * 气泡 style: Neon's words sit in glass bubbles (max 80% wide) with a 26dp orb at the bottom left;
+ * file and link cards follow under the bubble with the same indent; the ops capsule is indented 34dp.
+ */
+@Composable
+private fun BubbleAssistant(
+    m: MessageEntity,
+    isLast: Boolean,
+    busy: Boolean,
+    toolResults: Map<String, ContentBlock.ToolResult>,
+    onRegenerate: () -> Unit,
+    showOps: Boolean,
+    ops: OpsFold?,
+    onOps: () -> Unit,
+) {
+    val blocks = remember(m.blocks) { BlocksJson.decode(m.blocks) }
+    val streaming = m.status == "streaming"
+    val parts = remember(m.blocks, toolResults.keys) {
+        val out = mutableListOf<BubblePart>()
+        fun addText(list: List<com.qigai.neon.markdown.MdBlock>) {
+            if (list.isEmpty()) return
+            val last = out.lastOrNull()
+            if (last is BubblePart.Text) out[out.lastIndex] = BubblePart.Text(last.blocks + list) else out += BubblePart.Text(list)
+        }
+        blocks.forEach { b ->
+            when (b) {
+                is ContentBlock.Text -> if (b.text.isNotBlank()) {
+                    val run = mutableListOf<com.qigai.neon.markdown.MdBlock>()
+                    com.qigai.neon.markdown.MdParser.parse(b.text).forEach { md ->
+                        if (md is com.qigai.neon.markdown.MdBlock.LinkCard) { addText(run.toList()); run.clear(); out += BubblePart.Link(md.url, md.label) }
+                        else run += md
+                    }
+                    addText(run)
+                }
+                is ContentBlock.ToolUse -> if (b.name == "present_file" && toolResults[b.id]?.isError != true) {
+                    presentArgs(b.inputJson)?.let { (path, title) -> out += BubblePart.File(path, title) }
+                }
+                else -> Unit
             }
         }
+        // Bubble first, then the cards, as on the board.
+        out.filterIsInstance<BubblePart.Text>().let { t -> if (t.size > 1) listOf(BubblePart.Text(t.flatMap { it.blocks })) else t } +
+            out.filter { it !is BubblePart.Text }
+    }
+    val toolUses = blocks.mapNotNull {
+        when (it) {
+            is ContentBlock.ToolUse -> Triple(it.id, it.name, it.inputJson)
+            is ContentBlock.ServerToolUse -> Triple(it.id, it.name, it.inputJson)
+            else -> null
+        }
+    }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val indent = Modifier.padding(start = BubbleIndent)
+        if (ops != null) Box(indent) { OpsFoldRow(ops, onOps) }
+        if (showOps) {
+            if (streaming && blocks.isEmpty()) Box(indent) { ThinkingSection("", null, live = true, liveStart = m.createdAt) }
+            blocks.forEachIndexed { i, b ->
+                if (b is ContentBlock.Thinking) Box(indent) {
+                    ThinkingSection(
+                        b.thinking, b.durationMs,
+                        live = streaming && blocks.drop(i + 1).none { it is ContentBlock.Text && it.text.isNotBlank() },
+                        liveStart = m.createdAt,
+                    )
+                }
+            }
+            if (toolUses.isNotEmpty()) Column(indent, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ToolChips(toolUses.map { it.second to toolSummary(it.third) }, toolResults, toolUses.map { it.first })
+                toolUses.lastOrNull()?.let { (id, name, input) ->
+                    toolResults[id]?.let { r -> TerminalPeek("$name ${toolSummary(input)}".trim(), r.content, r.isError) }
+                }
+            }
+        }
+        if (parts.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                com.qigai.neon.ui.components.NeonOrb(26.dp, lively = streaming)
+                Spacer(Modifier.width(8.dp))
+                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f)) {
+                    val maxW = (maxWidth + BubbleIndent) * 0.8f
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        parts.forEach { p ->
+                            when (p) {
+                                is BubblePart.Text -> SelectionContainer {
+                                    com.qigai.neon.markdown.MarkdownBlocks(
+                                        p.blocks,
+                                        Modifier.widthIn(max = maxW).glass(BubbleShape).padding(horizontal = 16.dp, vertical = 12.dp),
+                                    )
+                                }
+                                is BubblePart.Link -> Box(Modifier.widthIn(max = maxW)) { LinkOrFileCard(p.url, p.label) }
+                                is BubblePart.File -> Box(Modifier.widthIn(max = maxW)) { FileCard(p.path, p.title) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (m.status == "error") Box(indent) { ErrorCard(m.error, canRetry = isLast && !busy, onRegenerate) }
+        if (!streaming && (showOps || isLast || parts.isNotEmpty())) Box(indent) { MetaRow(m, blocks, isLast, busy, onRegenerate) }
     }
 }
 

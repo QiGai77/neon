@@ -6,6 +6,8 @@ import com.qigai.neon.connectors.McpClient
 import com.qigai.neon.connectors.NativeDeviceTools
 import com.qigai.neon.connectors.WebhookConnector
 import com.qigai.neon.data.ConnectorDao
+import com.qigai.neon.guard.ApprovalPolicy
+import com.qigai.neon.vault.meta
 import com.qigai.neon.guard.GuardDecision
 import com.qigai.neon.guard.PendingGuardRequest
 import com.qigai.neon.guard.RiskGate
@@ -40,6 +42,9 @@ class ToolRegistry(
     private val riskGate: RiskGate,
     private val files: com.qigai.neon.sandbox.SandboxFiles? = null,
     private val space: com.qigai.neon.space.SpaceStore? = null,
+    private val vault: com.qigai.neon.vault.Vault? = null,
+    private val vaultForms: com.qigai.neon.vault.VaultFormGate? = null,
+    private val browser: com.qigai.neon.vault.WebBrowser? = null,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -99,6 +104,14 @@ class ToolRegistry(
             ToolSpec("phone_read_clipboard", "读取手机剪贴板文本", objSchema()),
             ToolSpec("phone_list_notifications", "读取最近捕获的手机通知", objSchema()),
             ToolSpec("phone_open_deeplink", "通过 DeepLink 或 URL 跳转应用", objSchema("url" to "目标链接", required = listOf("url"))),
+            ToolSpec("vault_list", "列出本机保存的安全表单（网站登录账号或 Cookie）。只返回编号、网站和打码的账号，看不到密码和 Cookie 的值", objSchema("site" to "可选，只看某个网站")),
+            ToolSpec("vault_request", "弹出安全表单让用户填写某网站的登录信息，加密存在手机上，只返回表单编号。kind=login 填账号密码，kind=cookie 粘贴 Cookie。需要登录而 vault_list 里没有时调用", objSchema("site" to "网站域名，如 github.com", "kind" to "login 或 cookie", "reason" to "一句话说明为什么要登录", "existing_id" to "可选，要更新的表单编号", required = listOf("site", "kind", "reason"))),
+            ToolSpec("web_open", "用内置浏览器打开网页并返回页面文字和带编号的可操作元素。传 vault_id 时先注入该安全表单的 Cookie，或在登录页自动填好账号密码（值不经过你）", objSchema("url" to "网址", "vault_id" to "可选，安全表单编号", required = listOf("url"))),
+            ToolSpec("web_read", "重新读取内置浏览器当前页面", objSchema()),
+            ToolSpec("web_click", "点击内置浏览器页面上指定编号的元素", objSchema("index" to "元素编号", required = listOf("index"))),
+            ToolSpec("web_type", "向内置浏览器页面上指定编号的输入框填入文字。不要用它填密码，密码用 web_fill", objSchema("index" to "输入框编号", "text" to "文字", "submit" to "true 时填完提交表单", required = listOf("index", "text"))),
+            ToolSpec("web_fill", "用安全表单在当前页面填好账号和密码", objSchema("vault_id" to "安全表单编号", required = listOf("vault_id"))),
+            ToolSpec("web_save_login", "把内置浏览器里当前网站的登录状态（Cookie）存进安全表单，下次 web_open 带上编号就能直接登录", objSchema("label" to "可选，名字", "existing_id" to "可选，更新已有表单")),
             ToolSpec("webhook_trigger", "触发已配置的 Webhook 自动化端点", objSchema("payload" to "JSON 负载", required = listOf("payload"))),
         )
 
@@ -118,7 +131,8 @@ class ToolRegistry(
                     }
                 }
             }
-        return if (hands) base else base.filterNot { it.name.startsWith("hands_") }
+        val noWeb = if (browser == null) base.filterNot { it.name.startsWith("web_") || it.name.startsWith("vault_") } else base
+        return if (hands) noWeb else noWeb.filterNot { it.name.startsWith("hands_") }
     }
 
     suspend fun execute(sessionId: String, toolName: String, inputJson: String): ToolOutcome {
@@ -128,21 +142,28 @@ class ToolRegistry(
         return ToolOutcome(clipped, isError = out.startsWith("ERROR") || out.startsWith("DENIED"))
     }
 
+    /** Hands calls that only look, plus hands_tap, which HandsOperator gates itself with the button label. */
+    private val handsReads = setOf("hands_tap", "hands_dump_screen", "hands_screenshot", "hands_list_apps")
+
     private suspend fun executeRaw(sessionId: String, toolName: String, inputJson: String): String {
         val args = runCatching { json.parseToJsonElement(inputJson).jsonObject }.getOrElse { JsonObject(emptyMap()) }
         val assessment = RiskPolicy.assessToolCall(
             toolName = toolName,
             shellCommand = args["command"]?.jsonPrimitive?.content.orEmpty(),
         )
-        if (assessment.level == RiskLevel.CONFIRM && toolName != "sandbox_exec" && !toolName.startsWith("hands_")) {
-            val decision = riskGate.requestApproval(
+        if (toolName != "sandbox_exec" && toolName !in handsReads) {
+            val clickLabel = if (toolName == "web_click") args["index"]?.jsonPrimitive?.content?.toIntOrNull()?.let { browser?.element(it)?.label }.orEmpty() else ""
+            val type = ApprovalPolicy.typeOf(toolName, if (toolName.startsWith("hands_")) inputJson else clickLabel)
+            val base = if (clickLabel.isNotEmpty() && com.qigai.neon.guard.TapWords.findMatches(clickLabel).isNotEmpty()) RiskLevel.CONFIRM else assessment.level
+            val decision = riskGate.gate(
+                type = type, base = base, write = ApprovalPolicy.isWrite(toolName),
                 request = PendingGuardRequest(
                     title = "Sentinel 外部操作确认",
-                    targetLabel = "$toolName(${inputJson.take(80)})",
+                    targetLabel = if (clickLabel.isNotEmpty()) "点击「$clickLabel」" else "$toolName(${inputJson.take(80)})",
                     targetPackage = "neon.connector",
                     reasons = assessment.reasons,
                     requireBiometric = assessment.requireBiometric,
-                    stepSummary = "调用外部连接器工具",
+                    stepSummary = if (toolName.startsWith("hands_")) "操作手机" else "调用外部连接器工具",
                 ),
                 scopeKey = "tool:$toolName",
             )
@@ -214,6 +235,54 @@ class ToolRegistry(
             "space_cards" -> space?.handleTool(args) ?: "ERROR: 空间不可用"
             "phone_read_clipboard" -> nativeDevice.readClipboard()
             "phone_list_notifications" -> nativeDevice.listRecentNotifications()
+            "vault_list" -> {
+                val v = vault ?: return "ERROR: 安全表单不可用"
+                val site = args["site"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
+                val list = if (site != null) v.forSite(site).map { it.meta() } else v.items.value
+                if (list.isEmpty()) "还没有保存的安全表单" + (site?.let { "（$it）" } ?: "")
+                else list.joinToString("\n") { m ->
+                    "${m.id}  ${m.site}  ${if (m.kind == "login") "账号 ${m.user}" else "Cookie ${m.cookieCount} 项"}${if (m.label.isNotBlank() && m.label != m.site) "  ${m.label}" else ""}"
+                }
+            }
+            "vault_request" -> {
+                val g = vaultForms ?: return "ERROR: 安全表单不可用"
+                val site = args["site"]?.jsonPrimitive?.content.orEmpty()
+                if (site.isBlank()) return "ERROR: 缺少 site"
+                val kind = if (args["kind"]?.jsonPrimitive?.content == "cookie") "cookie" else "login"
+                val item = g.request(com.qigai.neon.vault.VaultFormRequest(
+                    site = com.qigai.neon.vault.siteOf(site), kind = kind,
+                    reason = args["reason"]?.jsonPrimitive?.content.orEmpty(),
+                    existingId = args["existing_id"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() },
+                ))
+                if (item == null) "DENIED: 用户没有填写安全表单" else "OK: 已保存安全表单 ${item.id}（${item.site}），用 web_open 时传 vault_id=${item.id}"
+            }
+            "web_open" -> {
+                val b = browser ?: return "ERROR: 浏览器不可用"
+                b.open(args["url"]?.jsonPrimitive?.content ?: return "ERROR: 缺少 url", args["vault_id"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() })
+            }
+            "web_read" -> browser?.snapshot() ?: "ERROR: 浏览器不可用"
+            "web_click" -> {
+                val i = args["index"]?.jsonPrimitive?.content?.toIntOrNull() ?: return "ERROR: 缺少 index"
+                browser?.click(i) ?: "ERROR: 浏览器不可用"
+            }
+            "web_type" -> {
+                val b = browser ?: return "ERROR: 浏览器不可用"
+                val i = args["index"]?.jsonPrimitive?.content?.toIntOrNull() ?: return "ERROR: 缺少 index"
+                if (b.element(i)?.password == true) return "ERROR: 密码框请用 web_fill 和安全表单填写"
+                val r = b.type(i, args["text"]?.jsonPrimitive?.content.orEmpty(), args["submit"]?.jsonPrimitive?.content == "true")
+                if (r == "OK" && args["submit"]?.jsonPrimitive?.content == "true") { kotlinx.coroutines.delay(1500); b.snapshot() } else r
+            }
+            "web_fill" -> {
+                val b = browser ?: return "ERROR: 浏览器不可用"
+                val item = vault?.get(args["vault_id"]?.jsonPrimitive?.content.orEmpty()) ?: return "ERROR: 没有这个安全表单"
+                if (item.kind != "login") return "ERROR: 这个安全表单只有 Cookie，用 web_open 带上 vault_id"
+                if (b.fillLogin(item)) "OK: 已填好账号和密码，点登录按钮提交" else "ERROR: 当前页面没有对应 ${item.site} 的登录框"
+            }
+            "web_save_login" -> {
+                val b = browser ?: return "ERROR: 浏览器不可用"
+                val item = b.saveLogin(args["existing_id"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }, args["label"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() })
+                if (item == null) "ERROR: 当前页面没有可保存的登录状态" else "OK: 登录状态已存为安全表单 ${item.id}（${item.site}）"
+            }
             "phone_open_deeplink" -> {
                 val ok = nativeDevice.openDeepLink(args["url"]?.jsonPrimitive?.content.orEmpty())
                 if (ok) "OK: 已跳转" else "ERROR: 无法打开链接"
