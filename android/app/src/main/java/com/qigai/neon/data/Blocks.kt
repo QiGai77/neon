@@ -19,6 +19,10 @@ sealed class ContentBlock {
     @Serializable @SerialName("server_tool_use")
     data class ServerToolUse(val id: String, val name: String, val inputJson: String = "{}") : ContentBlock()
 
+    /** A file the user picked, copied into the sandbox. */
+    @Serializable @SerialName("attachment")
+    data class Attachment(val name: String, val path: String, val mime: String = "", val size: Long = 0) : ContentBlock()
+
     @Serializable @SerialName("tool_result")
     data class ToolResult(val toolUseId: String, val content: String, val isError: Boolean = false) : ContentBlock()
 }

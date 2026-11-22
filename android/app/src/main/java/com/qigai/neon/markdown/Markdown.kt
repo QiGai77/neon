@@ -38,14 +38,18 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.foundation.layout.fillMaxSize
 import com.qigai.neon.R
 import com.qigai.neon.ui.theme.Neon
 import com.qigai.neon.ui.theme.NeonShapes
 import com.qigai.neon.ui.theme.NeonType
 
-/** Markdown blocks (GFM subset). LaTeX is shown as raw source in a math box. */
+/** Markdown blocks (GFM subset). LaTeX is rendered with JLaTeXMath; raw source only when it does not parse. */
 sealed class MdBlock {
     data class Heading(val level: Int, val text: String) : MdBlock()
     data class Paragraph(val text: String) : MdBlock()
@@ -54,6 +58,8 @@ sealed class MdBlock {
     data class Quote(val text: String) : MdBlock()
     data class ListBlock(val ordered: Boolean, val items: List<Pair<Int, String>>, val start: Int) : MdBlock()
     data class Table(val header: List<String>, val rows: List<List<String>>) : MdBlock()
+    /** A paragraph that is only a link: shown as a card. */
+    data class LinkCard(val url: String, val label: String?) : MdBlock()
     data object Rule : MdBlock()
 }
 
@@ -61,6 +67,8 @@ object MdParser {
     private val ulRe = Regex("^(\\s*)[-*+]\\s+(.*)$")
     private val olRe = Regex("^(\\s*)(\\d+)[.)]\\s+(.*)$")
     private val hRe = Regex("^(#{1,6})\\s+(.*)$")
+    private val linkOnly = Regex("""^\[([^\]]*)]\(([^)\s]+(?:\s+"[^"]*")?)\)[。.]?$""")
+    private val bareUrl = Regex("""^<?(https?://\S+)>?$""")
     private val sepRe = Regex("^\\s*\\|?\\s*:?-{2,}:?\\s*(\\|\\s*:?-{2,}:?\\s*)*\\|?\\s*$")
 
     fun cells(line: String): List<String> = line.trim().removePrefix("|").removeSuffix("|").split("|").map { it.trim() }
@@ -70,7 +78,19 @@ object MdParser {
         val out = mutableListOf<MdBlock>()
         var i = 0
         val para = StringBuilder()
-        fun flushPara() { if (para.isNotBlank()) out += MdBlock.Paragraph(para.toString().trim()); para.setLength(0) }
+        fun flushPara() {
+            if (para.isNotBlank()) {
+                val p = para.toString().trim()
+                val link = linkOnly.matchEntire(p)
+                val bare = bareUrl.matchEntire(p)
+                out += when {
+                    link != null -> MdBlock.LinkCard(link.groupValues[2].trim().substringBefore(' '), link.groupValues[1].trim().ifEmpty { null })
+                    bare != null -> MdBlock.LinkCard(p.trim('<', '>'), null)
+                    else -> MdBlock.Paragraph(p)
+                }
+            }
+            para.setLength(0)
+        }
         while (i < lines.size) {
             val line = lines[i]
             val t = line.trim()
@@ -83,6 +103,18 @@ object MdParser {
                     i++
                     while (i < lines.size && !lines[i].trim().startsWith(fence)) { sb.append(lines[i]).append('\n'); i++ }
                     out += MdBlock.Code(lang, sb.toString().trimEnd('\n'))
+                    i++
+                    continue
+                }
+                t.startsWith("\\[") -> {
+                    flushPara()
+                    val rest = t.removePrefix("\\[")
+                    if (rest.endsWith("\\]")) { out += MdBlock.Math(rest.removeSuffix("\\]").trim()); i++; continue }
+                    val sb = StringBuilder(rest)
+                    i++
+                    while (i < lines.size && !lines[i].trim().endsWith("\\]")) { sb.append('\n').append(lines[i]); i++ }
+                    if (i < lines.size) sb.append('\n').append(lines[i].trim().removeSuffix("\\]"))
+                    out += MdBlock.Math(sb.toString().trim())
                     i++
                     continue
                 }
@@ -147,19 +179,56 @@ object MdParser {
     }
 }
 
-/** Inline: **bold**, *italic*, `code`, ~~strike~~, [text](url), <https://…>, $tex$ (raw). */
+/** Inline: **bold**, *italic*, `code`, ~~strike~~, [text](url), <https://…>; $tex$ stays raw here (see [MdText]). */
 @Composable
-fun mdInline(text: String, base: TextStyle): AnnotatedString {
+fun mdInline(text: String, base: TextStyle): AnnotatedString = mdInlineRich(text, base, math = false).first
+
+/** Text with inline markdown and rendered inline math. */
+@Composable
+fun MdText(text: String, style: TextStyle, modifier: Modifier = Modifier) {
+    val (str, tex) = mdInlineRich(text, style, math = true)
+    if (tex.isEmpty()) { Text(str, style = style, modifier = modifier); return }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val color = style.color.takeIf { it != androidx.compose.ui.graphics.Color.Unspecified } ?: Neon.colors.inkPrimary
+    val px = with(density) { style.fontSize.toPx() }
+    val inline = remember(tex, px, color) {
+        tex.mapIndexedNotNull { k, t ->
+            val bmp = MathRenderer.render(t, px, color.toArgb(), block = false) ?: return@mapIndexedNotNull null
+            val w = (bmp.width / density.density / density.fontScale).sp
+            val h = (bmp.height / density.density / density.fontScale).sp
+            "m$k" to androidx.compose.foundation.text.InlineTextContent(
+                androidx.compose.ui.text.Placeholder(w, h, androidx.compose.ui.text.PlaceholderVerticalAlign.TextCenter)
+            ) { androidx.compose.foundation.Image(bmp.asImageBitmap(), t, Modifier.fillMaxSize()) }
+        }.toMap()
+    }
+    if (inline.size < tex.size) {
+        // something did not parse: fall back to raw source for the whole line
+        Text(mdInline(text, style), style = style, modifier = modifier); return
+    }
+    Text(str, style = style, modifier = modifier, inlineContent = inline)
+}
+
+@Composable
+private fun mdInlineRich(text: String, base: TextStyle, math: Boolean): Pair<AnnotatedString, List<String>> {
     val c = Neon.colors
     val codeFont = Neon.fonts.code
     val bold = Neon.fonts.medium
-    return remember(text, c, base) {
+    return remember(text, c, base, math) {
+        val tex = mutableListOf<String>()
+        fun androidx.compose.ui.text.AnnotatedString.Builder.mathSpan(t: String) {
+            if (math) { appendInlineContent("m${tex.size}", t); tex += t }
+            else withStyle(SpanStyle(fontFamily = codeFont, color = c.inkSecondary)) { append(t) }
+        }
         buildAnnotatedString {
             var i = 0
             val n = text.length
             while (i < n) {
                 val ch = text[i]
                 when {
+                    text.startsWith("\\(", i) && text.indexOf("\\)", i + 2) > i -> {
+                        val end = text.indexOf("\\)", i + 2)
+                        mathSpan(text.substring(i + 2, end).trim()); i = end + 2
+                    }
                     ch == '\\' && i + 1 < n -> { append(text[i + 1]); i += 2 }
                     ch == '`' -> {
                         val end = text.indexOf('`', i + 1)
@@ -207,15 +276,14 @@ fun mdInline(text: String, base: TextStyle): AnnotatedString {
                     }
                     ch == '$' && i + 1 < n && text[i + 1] != ' ' && text[i + 1] != '$' -> {
                         val end = text.indexOf('$', i + 1)
-                        if (end > i + 1 && !text.substring(i + 1, end).contains('\n')) {
-                            withStyle(SpanStyle(fontFamily = codeFont, color = c.inkSecondary)) { append(text.substring(i + 1, end)) }
-                            i = end + 1
+                        if (end > i + 1 && !text.substring(i + 1, end).contains('\n') && !text.substring(i + 1, end).matches(Regex("""[\d.,\s]+"""))) {
+                            mathSpan(text.substring(i + 1, end)); i = end + 1
                         } else { append(ch); i++ }
                     }
                     else -> { append(ch); i++ }
                 }
             }
-        }
+        } to tex.toList()
     }
 }
 
@@ -237,14 +305,15 @@ private fun MdBlockView(b: MdBlock) {
         is MdBlock.Heading -> {
             val size = when (b.level) { 1 -> 22.sp; 2 -> 20.sp; 3 -> 18.sp; else -> 16.sp }
             val st = NeonType.bodyMedium().copy(fontSize = size, lineHeight = size * 1.4f)
-            Text(mdInline(b.text, st), style = st)
+            MdText(b.text, st)
         }
-        is MdBlock.Paragraph -> Text(mdInline(b.text, body), style = body)
+        is MdBlock.Paragraph -> MdText(b.text, body)
+        is MdBlock.LinkCard -> com.qigai.neon.ui.chat.LinkOrFileCard(b.url, b.label)
         is MdBlock.Quote -> Row(Modifier.height(IntrinsicSize.Min)) {
             Box(Modifier.width(3.dp).fillMaxHeight().background(c.borderHairline))
             Spacer(Modifier.width(10.dp))
             val st = body.copy(color = c.inkSecondary)
-            Text(mdInline(b.text, st), style = st)
+            MdText(b.text, st)
         }
         is MdBlock.Rule -> Box(Modifier.fillMaxWidth().height(1.dp).background(c.borderHairline))
         is MdBlock.ListBlock -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -255,18 +324,12 @@ private fun MdBlockView(b: MdBlock) {
                     Text(marker, style = NeonType.tnum(body).copy(color = c.inkSecondary), modifier = Modifier.widthIn(min = 22.dp))
                     val task = text.startsWith("[ ] ") || text.startsWith("[x] ") || text.startsWith("[X] ")
                     val shown = if (task) (if (text[1] == ' ') "☐ " else "☑ ") + text.drop(4) else text
-                    Text(mdInline(shown, body), style = body)
+                    MdText(shown, body)
                 }
             }
         }
         is MdBlock.Code -> CodeBlock(b.lang, b.code)
-        is MdBlock.Math -> Column(
-            Modifier.fillMaxWidth().clip(NeonShapes.item).background(c.bgSubtle).padding(12.dp)
-        ) {
-            Text("LaTeX", style = NeonType.caption())
-            Spacer(Modifier.height(4.dp))
-            SelectionContainer { Text(b.tex, style = NeonType.code()) }
-        }
+        is MdBlock.Math -> MathBlock(b.tex)
         is MdBlock.Table -> MdTable(b)
     }
 }
@@ -320,5 +383,25 @@ private fun MdTable(t: MdBlock.Table) {
                 if (ri < t.rows.size) Box(Modifier.height(1.dp).background(c.borderHairline).fillMaxWidth())
             }
         }
+    }
+}
+
+@Composable
+private fun MathBlock(tex: String) {
+    val c = Neon.colors
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val px = with(density) { (NeonType.body().fontSize * 1.1f).toPx() }
+    val ink = c.inkPrimary.toArgb()
+    val bmp = remember(tex, px, ink) { MathRenderer.render(tex, px, ink, block = true) }
+    if (bmp == null) {
+        Column(Modifier.fillMaxWidth().clip(NeonShapes.item).background(c.bgSubtle).padding(12.dp)) {
+            SelectionContainer { Text(tex, style = NeonType.code()) }
+        }
+        return
+    }
+    Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+        val w = with(density) { bmp.width.toDp() }
+        val h = with(density) { bmp.height.toDp() }
+        androidx.compose.foundation.Image(bmp.asImageBitmap(), tex, Modifier.size(w, h))
     }
 }

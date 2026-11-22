@@ -38,6 +38,8 @@ class ToolRegistry(
     private val mcpHub: com.qigai.neon.connectors.McpHub,
     private val tokenStore: EncryptedTokenStore,
     private val riskGate: RiskGate,
+    private val files: com.qigai.neon.sandbox.SandboxFiles? = null,
+    private val space: com.qigai.neon.space.SpaceStore? = null,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -77,6 +79,23 @@ class ToolRegistry(
             ToolSpec("drive_search", "按文件名或全文搜索 Google Drive，留空列出最近修改的文件", objSchema("query" to "关键词")),
             ToolSpec("drive_read_file", "读取 Google Drive 文件的文本内容，文档和幻灯片导出为文本，表格导出为 CSV", objSchema("file_id" to "文件 ID", required = listOf("file_id"))),
             ToolSpec("drive_write_file", "向 Google Drive /Neon/附件 写入文本或 CSV 文件", objSchema("filename" to "文件名", "content" to "文件内容", required = listOf("filename", "content"))),
+            ToolSpec("present_file", "把沙箱里做好的文件交给用户，对话里会显示成可打开、可分享的文件卡片。做完 Word、PDF、表格、图片、视频等交付物后调用", objSchema("path" to "文件在沙箱里的绝对路径，比如 /workspace/out/报告.docx", "title" to "卡片上显示的标题，可省略", required = listOf("path"))),
+            ToolSpec("space_cards", "管理用户空间页的卡片：list 列出，add 添加，update 修改，remove 删除，move 调整位置。生活卡片类型 train 高铁票、flight 航班、parcel 快递、nav 导航、note 自定义；功能卡片类型 files skills connectors sandbox memory tasks hands drive。看到车票、航班、快递短信或用户要求时主动添加",
+                buildJsonObject {
+                    put("type", "object")
+                    putJsonObject("properties") {
+                        putJsonObject("action") { put("type", "string"); put("enum", kotlinx.serialization.json.JsonArray(listOf("list", "add", "update", "remove", "move").map { kotlinx.serialization.json.JsonPrimitive(it) })) }
+                        putJsonObject("id") { put("type", "string"); put("description", "卡片 id，update remove move 时必填") }
+                        putJsonObject("type") { put("type", "string"); put("description", "add 时的卡片类型") }
+                        putJsonObject("size") { put("type", "string"); put("description", "half 半宽，full 整宽") }
+                        putJsonObject("position") { put("type", "integer"); put("description", "move 的目标位置，从 0 开始") }
+                        putJsonObject("data") {
+                            put("type", "object")
+                            put("description", "卡片内容。train: number from to depart arrive date seat gate；flight: number airline from to depart arrive date gate seat；parcel: carrier number status eta；nav: title address eta；note: title body emoji。时间写 HH:mm，日期写 YYYY-MM-DD")
+                        }
+                    }
+                    putJsonArray("required") { add(kotlinx.serialization.json.JsonPrimitive("action")) }
+                }),
             ToolSpec("phone_read_clipboard", "读取手机剪贴板文本", objSchema()),
             ToolSpec("phone_list_notifications", "读取最近捕获的手机通知", objSchema()),
             ToolSpec("phone_open_deeplink", "通过 DeepLink 或 URL 跳转应用", objSchema("url" to "目标链接", required = listOf("url"))),
@@ -186,6 +205,13 @@ class ToolRegistry(
                     onFailure = { "ERROR: ${it.message}" },
                 )
             }
+            "present_file" -> {
+                val path = args["path"]?.jsonPrimitive?.content.orEmpty()
+                val f = files?.host(path)
+                if (f == null || !f.exists()) "ERROR: 沙箱里没有 $path"
+                else "OK: 已交给用户 ${f.name}，${f.length()} 字节"
+            }
+            "space_cards" -> space?.handleTool(args) ?: "ERROR: 空间不可用"
             "phone_read_clipboard" -> nativeDevice.readClipboard()
             "phone_list_notifications" -> nativeDevice.listRecentNotifications()
             "phone_open_deeplink" -> {

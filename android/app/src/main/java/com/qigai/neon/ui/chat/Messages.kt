@@ -79,10 +79,13 @@ fun UserBubble(m: MessageEntity) {
     val blocks = remember(m.blocks) { BlocksJson.decode(m.blocks) }
     if (blocks.all { it is ContentBlock.ToolResult }) return // tool results are not user speech
     val c = Neon.colors
-    Row(Modifier.fillMaxWidth().padding(start = 56.dp), horizontalArrangement = Arrangement.End) {
-        SelectionContainer {
+    val files = blocks.filterIsInstance<ContentBlock.Attachment>()
+    Column(Modifier.fillMaxWidth().padding(start = 56.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        files.forEach { f -> Box(Modifier.widthIn(max = 300.dp)) { FileCard(f.path, f.name, f.size) } }
+        val text = blocks.plainText()
+        if (text.isNotBlank()) SelectionContainer {
             Text(
-                blocks.plainText(), style = NeonType.body(),
+                text, style = NeonType.body(),
                 modifier = Modifier.clip(NeonShapes.userBubble).background(c.userBubble).padding(horizontal = 17.dp, vertical = 12.dp),
             )
         }
@@ -306,6 +309,9 @@ fun AssistantMessage(
                     liveStart = m.createdAt,
                 )
                 is ContentBlock.Text -> if (b.text.isNotBlank()) MarkdownText(b.text)
+                is ContentBlock.ToolUse -> if (b.name == "present_file") presentArgs(b.inputJson)?.let { (path, title) ->
+                    if (toolResults[b.id]?.isError != true) FileCard(path, title)
+                }
                 else -> Unit
             }
         }
@@ -333,6 +339,12 @@ fun AssistantMessage(
     }
 }
 
+private fun presentArgs(input: String): Pair<String, String?>? = runCatching {
+    val o = com.qigai.neon.provider.Http.json.parseToJsonElement(input) as kotlinx.serialization.json.JsonObject
+    val path = (o["path"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: return null
+    path to (o["title"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+}.getOrNull()
+
 /** The folded summary of one turn's thinking and tool calls. */
 data class OpsFold(val steps: Int, val live: Boolean, val open: Boolean, val thinkMs: Long = 0, val activity: String = "正在思考")
 
@@ -358,7 +370,7 @@ private fun OpsFoldRow(f: OpsFold, onToggle: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (f.live) {
-            BreathingDot()
+            com.qigai.neon.ui.components.NeonOrb(16.dp, lively = true)
             Spacer(Modifier.width(8.dp))
         }
         Text(label, style = NeonType.tnum(NeonType.label().copy(color = c.inkSecondary)))

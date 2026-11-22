@@ -98,7 +98,9 @@ fun ChatScreen(vm: MainViewModel, openSheet: (SheetKind?) -> Unit, onOpenSetting
     val s by vm.settings.collectAsState()
     val keys by vm.configured.collectAsState()
     val models by vm.models.collectAsState()
-    val deepThink by vm.deepThink.collectAsState()
+    val effort by vm.effort.collectAsState()
+    val pending by vm.pending.collectAsState()
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> if (uris.isNotEmpty()) vm.attach(uris) }
     val voice by vm.voice.state.collectAsState()
     val currentId by vm.currentId.collectAsState()
     val skillDocs by vm.c.skills.skills.collectAsState()
@@ -151,7 +153,7 @@ fun ChatScreen(vm: MainViewModel, openSheet: (SheetKind?) -> Unit, onOpenSetting
             busy = busy,
             input = input, onInput = { input = it; if (it.startsWith("/")) palette = true },
             paletteOpen = palette, onPalette = { palette = it },
-            deepThink = deepThink, onDeepThink = { vm.setDeepThink(it) },
+            effort = effort, onEffort = { vm.setEffort(it) },
             voice = voice,
             onMenu = { scope.launch { drawer.open() } },
             onNewChat = { vm.newChat(); input = "" },
@@ -166,17 +168,15 @@ fun ChatScreen(vm: MainViewModel, openSheet: (SheetKind?) -> Unit, onOpenSetting
             },
             onVoiceCancel = { vm.voice.cancel() },
             onVoiceConfirm = { vm.voice.confirm() },
-            onPlus = { vm.toast("暂不支持附件") },
+            onPlus = { picker.launch(arrayOf("*/*")) },
             onSend = {
                 if (provider == null) openSheet(SheetKind.CONNECT_DEEPSEEK)
                 else if (vm.send(input)) { input = ""; palette = false }
             },
             onStop = { vm.stop() },
             skills = skillDocs.map { d -> PaletteSkill(d.name, d.command.removePrefix("/"), com.qigai.neon.ui.icons.Lucide.Sparkles) },
-            hands = s.handsEnabled,
-            onHands = { on -> scope.launch { vm.c.settings.put(com.qigai.neon.data.SettingsRepository.HANDS, if (on) "1" else "0") } },
             opsCollapsed = s.opsCollapsed,
-            onOpsCollapsed = { on -> scope.launch { vm.c.settings.put(com.qigai.neon.data.SettingsRepository.OPS_COLLAPSED, if (on) "1" else "0") } },
+            attachments = pending, onRemoveAttachment = { vm.removeAttachment(it) },
         )
     }
 }
@@ -192,8 +192,8 @@ fun ChatContent(
     onInput: (String) -> Unit,
     paletteOpen: Boolean,
     onPalette: (Boolean) -> Unit,
-    deepThink: Boolean,
-    onDeepThink: (Boolean) -> Unit,
+    effort: String,
+    onEffort: (String) -> Unit,
     voice: VoiceState,
     onMenu: () -> Unit,
     onNewChat: () -> Unit,
@@ -208,10 +208,10 @@ fun ChatContent(
     onSend: () -> Unit,
     onStop: () -> Unit,
     skills: List<PaletteSkill> = emptyList(),
-    hands: Boolean? = null,
-    onHands: (Boolean) -> Unit = {},
     opsCollapsed: Boolean = false,
-    onOpsCollapsed: (Boolean) -> Unit = {},
+    attachments: List<PendingAttachment> = emptyList(),
+    onRemoveAttachment: (PendingAttachment) -> Unit = {},
+    initialThinkOpen: Boolean = false,
 ) {
     val c = Neon.colors
     val turns = remember(messages) { opTurns(messages) }
@@ -222,15 +222,12 @@ fun ChatContent(
             if (m.role == "user") return@filterIndexed !turns.toolResultOnly.contains(m.id)
             if (!opsCollapsed) return@filterIndexed true
             val t = turns.byMessage[m.id] ?: return@filterIndexed true
-            t.head == m.id || t.head in openTurns || turns.hasText.contains(m.id) || m.status == "error" || i == messages.lastIndex
+            t.head == m.id || t.head in openTurns || turns.hasText.contains(m.id) || m.status == "error" || i == messages.lastIndex ||
+                m.blocks.contains("\"present_file\"")
         }
     }
     Column(Modifier.fillMaxSize().neonBackdrop().statusBarsPadding().imePadding()) {
-        ChatTopBar(
-            title, modelLabel, onMenu, onNewChat, onModel,
-            collapse = if (turns.byMessage.values.any { it.steps > 0 || it.thought }) opsCollapsed else null,
-            onCollapse = { onOpsCollapsed(!opsCollapsed) },
-        )
+        ChatTopBar(title, modelLabel, onMenu, onNewChat, onModel, thinking = busy)
 
         val listState = rememberLazyListState()
         LaunchedEffect(shown.size, messages.lastOrNull()?.blocks?.length) {
@@ -279,12 +276,12 @@ fun ChatContent(
 
         Composer(
             text = input, onText = onInput, busy = busy,
-            deepThink = deepThink, onDeepThink = onDeepThink,
+            effort = effort, onEffort = onEffort,
             paletteOpen = paletteOpen, onPalette = onPalette,
             voice = voice,
             onMic = onMic, onVoiceCancel = onVoiceCancel, onVoiceConfirm = onVoiceConfirm,
             onPlus = onPlus, onSend = onSend, onStop = onStop,
-            skills = skills, hands = hands, onHands = onHands,
+            skills = skills, attachments = attachments, onRemoveAttachment = onRemoveAttachment, initialThinkOpen = initialThinkOpen,
             onPickSkill = { onInput("/${it.trigger} "); onPalette(false) },
             modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 10.dp + com.qigai.neon.ui.home.LocalBottomBarInset.current),
         )
@@ -294,14 +291,14 @@ fun ChatContent(
 @Composable
 private fun ChatTopBar(
     title: String?, modelLabel: String?, onMenu: () -> Unit, onNewChat: () -> Unit, onModel: () -> Unit,
-    collapse: Boolean? = null, onCollapse: () -> Unit = {},
+    thinking: Boolean = false,
 ) {
     val c = Neon.colors
     Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         IconBtn(Lucide.Text, "菜单", onClick = onMenu)
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                BlobLogo(22.dp)
+                com.qigai.neon.ui.components.NeonOrb(24.dp, lively = thinking)
                 Spacer(Modifier.width(8.dp))
                 Text(title ?: "Neon", style = NeonType.title(), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -320,7 +317,6 @@ private fun ChatTopBar(
                 Icon(Lucide.ChevronDown, "选择模型", Modifier.size(13.dp), tint = c.inkTertiary)
             }
         }
-        if (collapse != null) IconBtn(if (collapse) Lucide.ChevronsUpDown else Lucide.ChevronsDownUp, if (collapse) "展开全部操作" else "折叠全部操作", tint = c.inkSecondary, onClick = onCollapse)
         IconBtn(Lucide.SquarePen, "新对话", onClick = onNewChat)
     }
 }

@@ -53,6 +53,7 @@ data class TurnConfig(
     val model: String,
     val modelInfo: ModelInfo?,
     val thinking: Boolean,
+    val effort: String = if (thinking) "high" else "none",
 )
 
 class AgentRuntime(
@@ -86,18 +87,21 @@ class AgentRuntime(
         const val SYSTEM = "你是 Neon，运行在用户 Android 手机上的助手。用用户的语言回答，使用 Markdown。" +
             "可以调用工具：Alpine Linux 沙箱（/workspace），Gmail，日历，Drive，手机剪贴板和通知，Hands 操作手机，以及已连接的 MCP 连接器。" +
             "沙箱自带 Python 3 和 uv，Node.js 和 pnpm，Git，gcc 和 cmake，以及 ripgrep jq sqlite 等常用工具，缺的软件用 apk add 安装。" +
-            "需要时直接调用工具，不要编造结果；高危操作会由 Sentinel 请用户确认。"
+            "需要时直接调用工具，不要编造结果；高危操作会由 Sentinel 请用户确认。" +
+            "数学公式用 LaTeX，行内用 \$...\$，独立公式用 \$\$...\$\$。" +
+            "用户上传的文件放在 /workspace/uploads。做出文件交付物（Word、PDF、表格、图片、视频等）时，先在沙箱里生成，再调用 present_file 交给用户；需要给出链接时单独一行写 Markdown 链接，会显示成卡片。" +
+            "用户空间页的卡片可以用 space_cards 管理，遇到车票、航班、快递、出行时可以主动添加生活卡片。"
         fun newId() = UUID.randomUUID().toString()
     }
 
     /** Creates the user message and runs the loop. Returns the conversation id. */
-    suspend fun send(conversationId: String?, text: String, cfg: TurnConfig): String {
+    suspend fun send(conversationId: String?, text: String, cfg: TurnConfig, attachments: List<ContentBlock.Attachment> = emptyList()): String {
         val now = System.currentTimeMillis()
         val cid = conversationId ?: newId()
         if (db.conversations().get(cid) == null) {
             db.conversations().upsert(
                 ConversationEntity(
-                    id = cid, title = text.replace(Regex("\\s+"), " ").trim().take(20).ifEmpty { "新对话" },
+                    id = cid, title = text.replace(Regex("\\s+"), " ").trim().take(20).ifEmpty { attachments.firstOrNull()?.name?.take(20) ?: "新对话" },
                     createdAt = now, updatedAt = now, provider = cfg.provider.id.id, model = cfg.model,
                 )
             )
@@ -105,7 +109,7 @@ class AgentRuntime(
         db.messages().insert(
             MessageEntity(
                 id = newId(), conversationId = cid, role = "user",
-                blocks = BlocksJson.encode(listOf(ContentBlock.Text(text))), createdAt = now,
+                blocks = BlocksJson.encode(attachments + listOfNotNull(text.takeIf { it.isNotBlank() }?.let { ContentBlock.Text(it) })), createdAt = now,
             )
         )
         db.conversations().touch(cid, now)
@@ -138,7 +142,9 @@ class AgentRuntime(
         val out = mutableListOf<ChatMessage>()
         for (m in db.messages().list(cid)) {
             if (m.status == "error") continue
-            val blocks = BlocksJson.decode(m.blocks)
+            val blocks = BlocksJson.decode(m.blocks).map { b ->
+                if (b is ContentBlock.Attachment) ContentBlock.Text("[用户上传了文件 ${b.name}，类型 ${b.mime}，大小 ${b.size} 字节，在沙箱 ${b.path}]\n") else b
+            }
             // Earlier turns: send text only (+ tool blocks within a tool loop); thinking stays local.
             val keep = blocks.filter { it is ContentBlock.Text || it is ContentBlock.ToolUse || it is ContentBlock.ToolResult }
                 .filter { it !is ContentBlock.Text || it.text.isNotBlank() }
@@ -225,7 +231,7 @@ class AgentRuntime(
                 // history() includes the placeholder? it is empty so filtered out.
                 h
             },
-            thinking = cfg.thinking, sessionId = cid,
+            thinking = cfg.thinking, effort = cfg.effort, sessionId = cid,
             wantTitle = firstTurn && cfg.provider.id == ProviderId.DEEPSEEK,
             tools = tools.specs(handsEnabled()), modelInfo = cfg.modelInfo,
         )

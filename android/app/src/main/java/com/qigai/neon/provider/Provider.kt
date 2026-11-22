@@ -45,6 +45,8 @@ data class ChatRequest(
     val system: String,
     val messages: List<ChatMessage>,
     val thinking: Boolean,
+    /** low | medium | high | max when thinking; ignored otherwise. */
+    val effort: String = "high",
     val sessionId: String,
     val wantTitle: Boolean = false,
     val tools: List<ToolSpec> = emptyList(),

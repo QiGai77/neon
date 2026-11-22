@@ -1,5 +1,7 @@
 package com.qigai.neon
 
+import com.qigai.neon.data.ContentBlock
+
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -77,8 +79,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (id == null) flowOf(null) else c.db.conversations().observe(id)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    private val _deepThink = MutableStateFlow(false)
-    val deepThink: StateFlow<Boolean> = _deepThink.asStateFlow()
+    private val _effort = MutableStateFlow("high")
+    /** Thinking level for new turns: none (极速) | low | medium | high | max. */
+    val effort: StateFlow<String> = _effort.asStateFlow()
 
     private val _models = MutableStateFlow(ModelsState())
     val models: StateFlow<ModelsState> = _models.asStateFlow()
@@ -95,7 +98,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     init {
         viewModelScope.launch {
             val s = settings.first { it.loaded }
-            _deepThink.value = s.deepThinkDefault
+            _effort.value = s.thinkEffort
             if (c.tokens.has(EncryptedTokenStore.DEEPSEEK)) loadModels(ProviderId.DEEPSEEK)
             loadModels(ProviderId.OPENCODE_GO) // public list
             if (c.tokens.has(EncryptedTokenStore.OPENCODE_GO)) refreshQuota()
@@ -175,22 +178,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---------- chat ----------
-    fun setDeepThink(on: Boolean) { _deepThink.value = on }
+    fun setEffort(e: String) {
+        _effort.value = e
+        viewModelScope.launch { c.settings.put(SettingsRepository.THINK_EFFORT, e) }
+    }
 
     private fun turnConfig(): TurnConfig? {
         val p = activeProviderId() ?: return null
         val model = modelFor(p)
         val info = _models.value.lists[p]?.firstOrNull { it.id == model }
-        return TurnConfig(client(p), model, info, _deepThink.value)
+        return TurnConfig(client(p), model, info, _effort.value != "none", _effort.value)
     }
+
+    private val _pending = MutableStateFlow<List<com.qigai.neon.ui.chat.PendingAttachment>>(emptyList())
+    /** Files picked for the next message, already in /workspace/uploads. */
+    val pending: StateFlow<List<com.qigai.neon.ui.chat.PendingAttachment>> = _pending.asStateFlow()
+
+    fun attach(uris: List<android.net.Uri>) = viewModelScope.launch {
+        val r = getApplication<Application>().contentResolver
+        val added = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            uris.mapNotNull { c.files.importUpload(r, it) }
+        }
+        if (added.size < uris.size) toast("有 ${uris.size - added.size} 个文件没能读取")
+        _pending.value = _pending.value + added.map { com.qigai.neon.ui.chat.PendingAttachment(it.name, it.path, it.mime, it.size) }
+    }
+
+    fun removeAttachment(a: com.qigai.neon.ui.chat.PendingAttachment) { _pending.value = _pending.value - a }
 
     fun send(text: String): Boolean {
         val t = text.trim()
-        if (t.isEmpty() || agentState.value.busy) return false
+        val files = _pending.value
+        if ((t.isEmpty() && files.isEmpty()) || agentState.value.busy) return false
         val cfg = turnConfig() ?: run { toast("请先连接一个模型"); return false }
         val before = _current.value
+        _pending.value = emptyList()
+        val blocks = files.map { ContentBlock.Attachment(it.name, it.path, it.mime, it.size) }
         viewModelScope.launch {
-            val cid = c.agent.send(before, t, cfg)
+            val cid = c.agent.send(before, t, cfg, blocks)
             if (_current.value == before) _current.value = cid
         }
         return true
@@ -288,7 +312,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- settings ----------
     fun setTheme(m: ThemeMode) = viewModelScope.launch { c.settings.put(SettingsRepository.THEME, m.name) }
     fun setDeepThinkDefault(on: Boolean) = viewModelScope.launch {
-        c.settings.put(SettingsRepository.DEEP_THINK, if (on) "1" else "0"); _deepThink.value = on
+        setEffort(if (on) "high" else "none")
     }
     fun setBase(key: String, url: String) = viewModelScope.launch {
         c.settings.put(key, url.trim().trimEnd('/').ifEmpty { null })

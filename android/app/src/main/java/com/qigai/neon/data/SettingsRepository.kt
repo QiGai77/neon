@@ -15,7 +15,9 @@ data class AppSettings(
     val provider: String? get() = raw[SettingsRepository.PROVIDER]
     val deepseekModel: String get() = raw[SettingsRepository.DEEPSEEK_MODEL] ?: "deepseek-v4-pro"
     val goModel: String get() = raw[SettingsRepository.GO_MODEL] ?: "deepseek-v4.1-flash"
-    val deepThinkDefault: Boolean get() = raw[SettingsRepository.DEEP_THINK] == "1"
+    val deepThinkDefault: Boolean get() = thinkEffort != "none"
+    /** none (极速) | low | medium | high | max */
+    val thinkEffort: String get() = raw[SettingsRepository.THINK_EFFORT] ?: "high"
     val deepseekBase: String get() = raw[SettingsRepository.DEEPSEEK_BASE]?.trimEnd('/') ?: SettingsRepository.DEFAULT_DEEPSEEK_BASE
     val goBase: String get() = raw[SettingsRepository.GO_BASE]?.trimEnd('/') ?: SettingsRepository.DEFAULT_GO_BASE
     val driveAutoSync: Boolean get() = raw[SettingsRepository.DRIVE_AUTOSYNC] != "0"
@@ -42,6 +44,7 @@ class SettingsRepository(private val dao: SettingDao, scope: CoroutineScope) {
         const val DEEPSEEK_MODEL = "deepseek_model"
         const val GO_MODEL = "go_model"
         const val DEEP_THINK = "deep_think_default"
+        const val THINK_EFFORT = "think_effort"
         const val DEEPSEEK_BASE = "deepseek_base"
         const val GO_BASE = "go_base"
         const val DRIVE_AUTOSYNC = "drive_autosync"

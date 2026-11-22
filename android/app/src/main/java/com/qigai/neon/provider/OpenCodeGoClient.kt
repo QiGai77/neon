@@ -77,7 +77,7 @@ class OpenCodeGoClient(
         }
         val efforts = req.modelInfo?.efforts.orEmpty()
         if (req.thinking && efforts.isNotEmpty()) {
-            put("reasoning_effort", if ("high" in efforts) "high" else efforts.last())
+            put("reasoning_effort", nearestEffort(req.effort, efforts))
         } else if (!req.thinking && "none" in efforts) {
             put("reasoning_effort", "none")
         }
@@ -223,4 +223,13 @@ class OpenCodeGoClient(
             return Regex("[A-Za-z0-9_\\-.]{20,}").find(raw)?.value
         }
     }
+}
+
+/** Picks the model's own level closest to the one asked for (low < medium < high < max). */
+internal fun nearestEffort(want: String, efforts: List<String>): String {
+    val scale = listOf("minimal", "low", "medium", "high", "xhigh", "max")
+    if (want in efforts) return want
+    if (want == "max" && "xhigh" in efforts) return "xhigh"
+    val w = scale.indexOf(want).coerceAtLeast(0)
+    return efforts.filter { it != "none" }.minByOrNull { kotlin.math.abs(scale.indexOf(it).let { i -> if (i < 0) 3 else i } - w) } ?: efforts.last()
 }

@@ -117,8 +117,8 @@ class ScreensSnapshotTest {
             com.qigai.neon.feed.FeedRepo("sample/compose-glass", "Sample description.", 640, "Kotlin", "https://github.com", "Jetpack Compose", "2026-11-15"),
         ),
         posts = listOf(
-            com.qigai.neon.feed.XPost("1", "sample_lab", "Sample Lab", null, "Sample post text for the snapshot. We are opening our MCP server so any AI Agent can call it, docs are live today.", null, 4820, System.currentTimeMillis() - 3 * 3_600_000L, "MCP"),
-            com.qigai.neon.feed.XPost("2", "sample_dev", "Sample Dev", null, "Second sample post, short.", null, 312, System.currentTimeMillis() - 26 * 3_600_000L, null),
+            com.qigai.neon.feed.XPost("1", "sample_lab", "Sample Lab", null, "Sample post text for the snapshot. We are opening our MCP server so any AI Agent can call it, docs are live today.", null, 4820, System.currentTimeMillis() - 3 * 3_600_000L, "MCP", replies = 60, reposts = 27, verified = true),
+            com.qigai.neon.feed.XPost("2", "sample_dev", "Sample Dev", null, "Second sample post, short.", null, 312, System.currentTimeMillis() - 26 * 3_600_000L, null, replies = 2),
         ),
     )
 
@@ -133,7 +133,7 @@ class ScreensSnapshotTest {
                         taskTitles = listOf("晨间早报"), tasksEnabled = 1, memory = listOf("SOUL.md", "USER.md", "GLOBAL.md"),
                         sandbox = com.qigai.neon.sandbox.SandboxStatus.Ready("aarch64", true), handsEnabled = true,
                     ),
-                ) {}
+                )
                 com.qigai.neon.ui.home.HomeTab.ME -> com.qigai.neon.ui.me.MeContent(
                     com.qigai.neon.ui.me.MeData(
                         modelLabel = "DeepSeek V4 Pro",
@@ -146,6 +146,30 @@ class ScreensSnapshotTest {
         }
     }
 
+    private val lifeCards = listOf(
+        com.qigai.neon.space.SpaceCard("train-1", "train", "full", mapOf("number" to "G7012", "from" to "南京南", "to" to "上海虹桥", "date" to "11月24日", "depart" to "08:12", "arrive" to "09:49", "seat" to "05车 12F", "gate" to "A3")),
+        com.qigai.neon.space.SpaceCard("parcel-1", "parcel", "half", mapOf("carrier" to "顺丰", "number" to "SF1234567890", "status" to "派送中，快递员正在路上", "eta" to "今天 18:00 前")),
+        com.qigai.neon.space.SpaceCard("nav-1", "nav", "half", mapOf("title" to "新街口", "address" to "南京市秦淮区中山路", "eta" to "18 分钟")),
+        com.qigai.neon.space.SpaceCard("flight-1", "flight", "full", mapOf("airline" to "东航", "number" to "MU5102", "from" to "PVG", "to" to "PEK", "date" to "11月28日", "depart" to "10:00", "arrive" to "12:15", "gate" to "C12", "seat" to "32A")),
+        com.qigai.neon.space.SpaceCard("skills", "skills"), com.qigai.neon.space.SpaceCard("sandbox", "sandbox"),
+    )
+    private val spaceData = com.qigai.neon.ui.space.SpaceData(
+        skillNames = listOf("账单整理", "查快递", "周报生成"), connectors = 8, connected = 3,
+        taskTitles = listOf("晨间早报"), tasksEnabled = 1, memory = listOf("SOUL.md", "USER.md", "GLOBAL.md"),
+        sandbox = com.qigai.neon.sandbox.SandboxStatus.Ready("aarch64", true), handsEnabled = true,
+    )
+    private val mathAnswer = msg("a5", "assistant", listOf(
+        ContentBlock.Text("欧拉公式把五个常数连在一起：\$e^{i\\pi} + 1 = 0\$，推广到任意角度是\n\n\$\$e^{i\\theta} = \\cos\\theta + i\\sin\\theta\$\$\n\n讲义做好了。"),
+        ContentBlock.ToolUse("t5", "present_file", "{\"path\":\"/workspace/out/欧拉公式讲义.docx\"}"),
+        ContentBlock.Text("\n\n[欧拉公式 维基百科](https://zh.wikipedia.org/wiki/欧拉公式)"),
+    ), model = "deepseek-v4-pro", out = 286)
+    private val upload = msg("u5", "user", listOf(ContentBlock.Attachment("课堂笔记.pdf", "/workspace/uploads/课堂笔记.pdf", "application/pdf", 482_133), ContentBlock.Text("按这份笔记讲讲欧拉公式，做一份 Word 讲义")), ago = 5000)
+    @org.junit.Before fun initMath() { com.qigai.neon.markdown.MathRenderer.init(androidx.test.core.app.ApplicationProvider.getApplicationContext()) }
+    @Test fun v043ChatDark() = darkShot("v043-chat", content = @Composable { HomeFrame(com.qigai.neon.ui.home.HomeTab.CHAT) { Chat(listOf(upload, mathAnswer), folded = true) } })
+    @Test fun v043ThinkDark() = darkShot("v043-think", content = @Composable { HomeFrame(com.qigai.neon.ui.home.HomeTab.CHAT) { Chat(listOf(upload), busy = true, thinkOpen = true, effort = "max", attachments = listOf(com.qigai.neon.ui.chat.PendingAttachment("截图.png", "/workspace/uploads/截图.png", "image/png", 120_000))) } })
+    @Test fun v043SpaceDark() = darkShot("v043-space", content = @Composable { HomeFrame(com.qigai.neon.ui.home.HomeTab.SPACE) { com.qigai.neon.ui.space.SpaceContent(spaceData, lifeCards) } })
+    @Test fun v043SpaceEditDark() = darkShot("v043-space-edit", content = @Composable { HomeFrame(com.qigai.neon.ui.home.HomeTab.SPACE) { com.qigai.neon.ui.space.SpaceContent(spaceData, lifeCards, initialEdit = true) } })
+    @Test fun v043SpaceLight() = shot("v043-space", content = @Composable { HomeFrame(com.qigai.neon.ui.home.HomeTab.SPACE) { com.qigai.neon.ui.space.SpaceContent(spaceData, lifeCards) } })
     private val liveStep = msg("a2", "assistant", listOf(ContentBlock.ToolUse("t9", "sandbox_exec", "{\"command\":\"sed -i 's/a/b/' app.py\"}")), status = "streaming")
     @Test fun v042FoldedDark() = darkShot("v042-chat-folded", content = @Composable { HomeFrame(com.qigai.neon.ui.home.HomeTab.CHAT) { Chat(listOf(ask, answer, results), folded = true) } })
     @Test fun v042LiveDark() = darkShot("v042-chat-live", content = @Composable { HomeFrame(com.qigai.neon.ui.home.HomeTab.CHAT) { Chat(listOf(ask, liveStep), folded = true, busy = true) } })
@@ -214,13 +238,16 @@ class ScreensSnapshotTest {
         title: String? = "账单与快递",
         skillList: List<PaletteSkill> = skills,
         folded: Boolean = false,
+        effort: String = "high",
+        thinkOpen: Boolean = false,
+        attachments: List<com.qigai.neon.ui.chat.PendingAttachment> = emptyList(),
     ) = ChatContent(
         title = title, modelLabel = model, messages = messages, busy = busy,
         input = input, onInput = {}, paletteOpen = palette, onPalette = {},
-        deepThink = true, onDeepThink = {}, voice = voice,
+        effort = effort, onEffort = {}, voice = voice,
         onMenu = {}, onNewChat = {}, onModel = {}, onConnectDeepSeek = {}, onConnectGo = {}, onRegenerate = {},
         onMic = {}, onVoiceCancel = {}, onVoiceConfirm = {}, onPlus = {}, onSend = {}, onStop = {},
-        skills = skillList, hands = true, opsCollapsed = folded,
+        skills = skillList, opsCollapsed = folded, attachments = attachments, initialThinkOpen = thinkOpen,
     )
 
     private val convs = listOf(

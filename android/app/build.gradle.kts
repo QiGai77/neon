@@ -15,8 +15,8 @@ android {
         applicationId = "com.qigai.neon"
         minSdk = 26
         targetSdk = 35
-        versionCode = (System.getenv("NEON_VERSION_CODE")?.toIntOrNull()) ?: 403
-        versionName = (System.getenv("NEON_VERSION_NAME") ?: "0.4.3").removePrefix("v")
+        versionCode = (System.getenv("NEON_VERSION_CODE")?.toIntOrNull()) ?: 404
+        versionName = (System.getenv("NEON_VERSION_NAME") ?: "0.4.4").removePrefix("v")
         ndk { abiFilters += "arm64-v8a" }
     }
 
@@ -83,6 +83,7 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.5")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("ru.noties:jlatexmath-android:0.2.0")
     implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

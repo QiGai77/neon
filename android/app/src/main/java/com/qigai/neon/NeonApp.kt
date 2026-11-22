@@ -46,6 +46,7 @@ class NeonApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        com.qigai.neon.markdown.MathRenderer.init(this)
         CrashLog.install(this)
         container = NeonContainer(this)
     }
@@ -97,10 +98,13 @@ class NeonContainer(val app: NeonApp) {
     val tasks = TaskScheduler(app, db.scheduledTaskDao())
     val skillSynth = SkillSynthesizer(complete = { prompt -> completeOnce(prompt) }, skillRepository = skills)
 
+    val files = com.qigai.neon.sandbox.SandboxFiles({ rootfs.rootfsDir }, { rootfs.workspaceDir })
+    val space = com.qigai.neon.space.SpaceStore(settings)
     val tools = ToolRegistry(
         shellExecutor = shell, handsOperator = hands, googleWorkspace = google, nativeDevice = device,
         webhookConnector = webhook, mcpClient = mcp, localStdioMcp = localMcp,
         connectorDao = db.connectorDao(), mcpHub = mcpHub, tokenStore = tokens, riskGate = riskGate,
+        files = files, space = space,
     )
     val agent = AgentRuntime(
         db, tools, scope, skills, memory,

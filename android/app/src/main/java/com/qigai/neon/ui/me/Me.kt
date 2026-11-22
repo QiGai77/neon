@@ -143,11 +143,17 @@ fun MeContent(d: MeData, a: MeActions) {
 
             SectionLabel("对话")
             Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(20.dp))) {
-                ToggleRow("折叠思考和工具步骤", d.opsCollapsed, a.onOps)
-                HorizontalDivider(color = c.borderCard.copy(alpha = 0.5f), modifier = Modifier.padding(horizontal = 16.dp))
-                ToggleRow("默认深度思考", d.deepThink, a.onDeepThink)
-                HorizontalDivider(color = c.borderCard.copy(alpha = 0.5f), modifier = Modifier.padding(horizontal = 16.dp))
-                ToggleRow("Hands 操作手机", d.hands, a.onHands)
+                ToggleRow("思考和命令收成一行", d.opsCollapsed, a.onOps)
+            }
+
+            SectionLabel("操作手机")
+            Column(Modifier.fillMaxWidth().glass(RoundedCornerShape(20.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Lucide.Hand, null, Modifier.size(18.dp), tint = c.inkPrimary)
+                    Spacer(Modifier.width(10.dp))
+                    Text(if (d.hands) "需要时 Neon 会替你点手机上的 App" else "Neon 不会碰手机上的 App", style = NeonType.label(), modifier = Modifier.weight(1f))
+                }
+                Segmented(listOf("智能调用", "常关"), if (d.hands) 0 else 1, onSelect = { a.onHands(it == 0) })
             }
 
             SectionLabel("更多")

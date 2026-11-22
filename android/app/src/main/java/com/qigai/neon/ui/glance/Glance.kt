@@ -1,5 +1,7 @@
 package com.qigai.neon.ui.glance
 
+import androidx.compose.foundation.border
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -110,7 +112,6 @@ fun GlanceContent(
     LazyColumn(
         Modifier.fillMaxSize().neonBackdrop().statusBarsPadding(),
         contentPadding = PaddingValues(bottom = bottom + 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
             PageHeader("速览", overline = today) {
@@ -119,13 +120,13 @@ fun GlanceContent(
             }
         }
         item {
-            LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyRow(Modifier.padding(top = 6.dp, bottom = 12.dp), contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(Filter.entries) { f -> GlassChip(f.label, f == filter) { filter = f } }
                 item { GlassChip("兴趣", false, icon = Lucide.Plus, onClick = onEdit) }
             }
         }
         if (filter == Filter.ALL || filter == Filter.GAP) item {
-            GapCard(interests) { onAsk(gapPrompt(interests)) }
+            Box(Modifier.padding(bottom = 8.dp)) { GapCard(interests) { onAsk(gapPrompt(interests)) } }
         }
         if (filter == Filter.X) {
             when {
@@ -146,7 +147,7 @@ fun GlanceContent(
             items(mixed, key = { if (it is com.qigai.neon.feed.XPost) "x" + it.id else (it as FeedRepo).fullName }) { e ->
                 when (e) {
                     is com.qigai.neon.feed.XPost -> PostCard(e, onOpen = { onOpen(e.url) }, onAsk = { onAsk(postPrompt(e)) })
-                    is FeedRepo -> RepoCard(e, onOpen = { onOpen(e.url) }, onAsk = { onAsk(repoPrompt(e)) })
+                    is FeedRepo -> Box(Modifier.padding(vertical = 10.dp)) { RepoCard(e, onOpen = { onOpen(e.url) }, onAsk = { onAsk(repoPrompt(e)) }) }
                 }
             }
         }
@@ -161,7 +162,7 @@ fun GlanceContent(
                 }
                 feed.repos.isEmpty() -> item { Hint("最近两周没有匹配你兴趣的新项目，换几个兴趣试试", action = "改兴趣", onAction = onEdit) }
                 else -> items(feed.repos, key = { it.fullName }) { r ->
-                    RepoCard(r, onOpen = { onOpen(r.url) }, onAsk = { onAsk(repoPrompt(r)) })
+                    Box(Modifier.padding(vertical = 6.dp)) { RepoCard(r, onOpen = { onOpen(r.url) }, onAsk = { onAsk(repoPrompt(r)) }) }
                 }
             }
         }
@@ -205,47 +206,101 @@ private fun GapCard(interests: List<String>, onDig: () -> Unit) {
     }
 }
 
+private val XBlue = Color(0xFF1D9BF0)
+
+/** One post the way X draws it: avatar on the left, name, badge, handle and time on one line, text, media, the action row. */
 @Composable
 private fun PostCard(p: com.qigai.neon.feed.XPost, onOpen: () -> Unit, onAsk: () -> Unit) {
     val c = Neon.colors
-    NeonCard(Modifier.padding(horizontal = 16.dp), onClick = onOpen) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val av = Modifier.size(34.dp).clip(CircleShape).background(Glass.tokens.tile)
+    var expanded by rememberSaveable(p.id) { mutableStateOf(false) }
+    var overflow by remember(p.id) { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 4.dp)) {
+            val av = Modifier.size(42.dp).clip(CircleShape).background(Glass.tokens.tile)
             if (p.avatar != null) NetImage(p.avatar, av) else Box(av)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(p.name, style = NeonType.label().copy(fontFamily = Neon.fonts.medium), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("@${p.handle}  ${ago(p.createdAt)}", style = NeonType.caption(), maxLines = 1)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(p.name, style = NeonType.item().copy(fontFamily = Neon.fonts.medium), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    if (p.verified) {
+                        Spacer(Modifier.width(3.dp))
+                        VerifiedBadge()
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("@${p.handle} · ${xAgo(p.createdAt)}", style = NeonType.secondary().copy(color = c.inkTertiary), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                  }
+                    Icon(Lucide.Ellipsis, null, Modifier.size(18.dp), tint = c.inkTertiary)
+                }
+                p.matched?.let { m ->
+                    Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Lucide.Sparkles, null, Modifier.size(13.dp), tint = c.inkTertiary)
+                        Spacer(Modifier.width(4.dp))
+                        Text("和你关注的 $m 有关", style = NeonType.caption().copy(color = c.inkTertiary))
+                    }
+                }
+                Text(
+                    p.text,
+                    style = NeonType.body().copy(fontSize = NeonType.item().fontSize, lineHeight = NeonType.secondary().lineHeight * 1.06f),
+                    maxLines = if (expanded) Int.MAX_VALUE else 7, overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { if (!expanded) overflow = it.hasVisualOverflow },
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+                if (overflow && !expanded) Text(
+                    "显示更多", style = NeonType.item().copy(color = XBlue),
+                    modifier = Modifier.padding(top = 2.dp).clickable { expanded = true },
+                )
+                p.image?.let {
+                    Spacer(Modifier.height(10.dp))
+                    NetImage(
+                        it, Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(16.dp))
+                            .border(1.dp, c.borderCard, RoundedCornerShape(16.dp)).background(Glass.tokens.tile),
+                    )
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    XAction(Lucide.MessageCircle, p.replies, "回复", Modifier.weight(1f), onOpen)
+                    XAction(Lucide.Repeat2, p.reposts, "转帖", Modifier.weight(1f), onOpen)
+                    XAction(Lucide.Heart, p.likes, "喜欢", Modifier.weight(1f), onOpen)
+                    XAction(Lucide.Sparkles, null, "问 Neon", Modifier.weight(1.3f), onAsk, label = "问 Neon")
+                    XAction(Lucide.Share2, null, "分享", Modifier, onOpen)
+                }
             }
-            Text("𝕏", style = NeonType.label().copy(color = c.inkTertiary))
         }
-        Spacer(Modifier.height(10.dp))
-        Text(p.text, style = NeonType.body().copy(fontSize = NeonType.item().fontSize, lineHeight = NeonType.secondary().lineHeight), maxLines = 8, overflow = TextOverflow.Ellipsis)
-        p.image?.let {
-            Spacer(Modifier.height(10.dp))
-            NetImage(it, Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(14.dp)).background(Glass.tokens.tile))
-        }
-        p.matched?.let { m ->
-            Spacer(Modifier.height(10.dp))
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(c.chipActive.copy(alpha = 0.7f)).padding(horizontal = 10.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Lucide.Sparkles, null, Modifier.size(14.dp), tint = c.onChipActive)
-                Spacer(Modifier.width(6.dp))
-                Text("提到你的兴趣 $m", style = NeonType.caption().copy(color = c.onChipActive))
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Lucide.Heart, null, Modifier.size(14.dp), tint = c.inkSecondary)
+        Box(Modifier.fillMaxWidth().height(1.dp).background(c.borderCard.copy(alpha = 0.6f)))
+    }
+}
+
+@Composable
+private fun VerifiedBadge() {
+    Box(Modifier.size(16.dp).clip(CircleShape).background(XBlue), contentAlignment = Alignment.Center) {
+        Icon(Lucide.Check, "已认证", Modifier.size(10.dp), tint = Color.White)
+    }
+}
+
+@Composable
+private fun XAction(icon: androidx.compose.ui.graphics.vector.ImageVector, count: Int?, desc: String, modifier: Modifier, onClick: () -> Unit, label: String? = null) {
+    val c = Neon.colors
+    Row(
+        modifier.height(40.dp).clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick).padding(end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, desc, Modifier.size(18.dp), tint = c.inkTertiary)
+        val t = label ?: count?.takeIf { it > 0 }?.let { formatStars(it) }
+        if (t != null) {
             Spacer(Modifier.width(4.dp))
-            Text(formatStars(p.likes), style = NeonType.tnum(NeonType.caption()))
-            Spacer(Modifier.weight(1f))
-            PillButton("打开", kind = ButtonKind.Secondary, icon = Lucide.ExternalLink, height = 34.dp, onClick = onOpen)
-            Spacer(Modifier.width(8.dp))
-            PillButton("问 Neon", icon = Lucide.MessageCircle, height = 34.dp, onClick = onAsk)
+            Text(t, style = NeonType.tnum(NeonType.caption().copy(color = c.inkTertiary)), maxLines = 1)
         }
+    }
+}
+
+private fun xAgo(t: Long): String {
+    val m = (System.currentTimeMillis() - t) / 60_000
+    return when {
+        m < 1 -> "刚刚"
+        m < 60 -> "${m}分钟"
+        m < 60 * 24 -> "${m / 60}小时"
+        m < 60 * 24 * 7 -> "${m / 1440}天"
+        else -> java.time.Instant.ofEpochMilli(t).atZone(java.time.ZoneId.systemDefault()).let { "${it.monthValue}月${it.dayOfMonth}日" }
     }
 }
 

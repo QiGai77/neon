@@ -45,6 +45,7 @@ class DeepSeekClient(
             req.messages.forEach { m -> add(messageJson(m)) }
         })
         putJsonObject("thinking") { put("type", if (req.thinking) "enabled" else "disabled") }
+        if (req.thinking) putJsonObject("output_config") { put("effort", req.effort) }
         if (req.wantTitle) putJsonObject("title") { put("enabled", true) }
         if (req.tools.isNotEmpty()) {
             put("tools", buildJsonArray {
@@ -65,6 +66,7 @@ class DeepSeekClient(
         put("content", buildJsonArray {
             m.blocks.forEach { b ->
                 when (b) {
+                    is ContentBlock.Attachment -> Unit
                     is ContentBlock.Text -> if (b.text.isNotEmpty()) addJsonObject { put("type", "text"); put("text", b.text) }
                     is ContentBlock.Thinking -> addJsonObject {
                         put("type", "thinking"); put("thinking", b.thinking); put("signature", b.signature ?: "")

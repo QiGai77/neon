@@ -27,6 +27,9 @@ data class XPost(
     val createdAt: Long,
     /** the interest the text mentions, if any */
     val matched: String?,
+    val replies: Int = 0,
+    val reposts: Int = 0,
+    val verified: Boolean = false,
 ) {
     val url get() = "https://x.com/$handle/status/$id"
 }
@@ -81,6 +84,8 @@ class XFeed(private val http: OkHttpClient, private val cacheFile: java.io.File)
                 XPost(
                     p.str("id")!!, p.str("handle")!!, p.str("name").orEmpty(), p.str("avatar"), p.str("text").orEmpty(), p.str("image"),
                     p.str("likes")?.toIntOrNull() ?: 0, p.str("at")?.toLongOrNull() ?: 0L, null,
+                    replies = p.str("replies")?.toIntOrNull() ?: 0, reposts = p.str("reposts")?.toIntOrNull() ?: 0,
+                    verified = p.str("verified") == "1",
                 )
             }.orEmpty()
             into[h] = at to posts
@@ -97,6 +102,8 @@ class XFeed(private val http: OkHttpClient, private val cacheFile: java.io.File)
                         put("name", kotlinx.serialization.json.JsonPrimitive(p.name)); put("avatar", kotlinx.serialization.json.JsonPrimitive(p.avatar))
                         put("text", kotlinx.serialization.json.JsonPrimitive(p.text)); put("image", kotlinx.serialization.json.JsonPrimitive(p.image))
                         put("likes", kotlinx.serialization.json.JsonPrimitive(p.likes.toString())); put("at", kotlinx.serialization.json.JsonPrimitive(p.createdAt.toString()))
+                        put("replies", kotlinx.serialization.json.JsonPrimitive(p.replies.toString())); put("reposts", kotlinx.serialization.json.JsonPrimitive(p.reposts.toString()))
+                        put("verified", kotlinx.serialization.json.JsonPrimitive(if (p.verified) "1" else "0"))
                     }
                 }))
             })
@@ -135,6 +142,9 @@ class XFeed(private val http: OkHttpClient, private val cacheFile: java.io.File)
                 likes = t["favorite_count"]?.jsonPrimitive?.intOrNull ?: 0,
                 createdAt = created,
                 matched = null,
+                replies = t["reply_count"]?.jsonPrimitive?.intOrNull ?: 0,
+                reposts = t["retweet_count"]?.jsonPrimitive?.intOrNull ?: 0,
+                verified = user?.let { u -> u.str("is_blue_verified") == "true" || u.str("verified") == "true" } ?: false,
             )
         }.filter { it.createdAt >= keepAfter }
     }

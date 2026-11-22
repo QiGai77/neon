@@ -33,6 +33,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.style.TextAlign
+import kotlin.math.roundToInt
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
@@ -41,6 +47,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -77,8 +84,8 @@ fun Composer(
     text: String,
     onText: (String) -> Unit,
     busy: Boolean,
-    deepThink: Boolean,
-    onDeepThink: (Boolean) -> Unit,
+    effort: String,
+    onEffort: (String) -> Unit,
     paletteOpen: Boolean,
     onPalette: (Boolean) -> Unit,
     voice: VoiceState,
@@ -91,13 +98,21 @@ fun Composer(
     modifier: Modifier = Modifier,
     skills: List<PaletteSkill> = emptyList(),
     onPickSkill: (PaletteSkill) -> Unit = {},
-    /** null hides the Hands toggle (no accessibility / Shizuku engine available). */
-    hands: Boolean? = null,
-    onHands: (Boolean) -> Unit = {},
+    attachments: List<PendingAttachment> = emptyList(),
+    onRemoveAttachment: (PendingAttachment) -> Unit = {},
+    initialThinkOpen: Boolean = false,
 ) {
     val c = Neon.colors
     val voiceMode = voice.recording || voice.transcribing
+    var thinkOpen by remember { mutableStateOf(initialThinkOpen) }
     Column(modifier) {
+        AnimatedVisibility(
+            thinkOpen && !voiceMode && !paletteOpen,
+            enter = slideInVertically(NeonMotion.palette()) { it / 3 } + fadeIn(tween(160)),
+            exit = slideOutVertically(NeonMotion.palette()) { it / 4 } + fadeOut(tween(120)),
+        ) {
+            EffortPanel(effort, onEffort, Modifier.padding(bottom = 10.dp))
+        }
         AnimatedVisibility(
             paletteOpen && !voiceMode,
             enter = slideInVertically(NeonMotion.palette()) { it / 3 } + fadeIn(tween(160)),
@@ -112,6 +127,12 @@ fun Composer(
                 .glass(NeonShapes.composer, strong = true)
                 .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp)
         ) {
+            if (attachments.isNotEmpty() && !voiceMode) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) { attachments.forEach { a -> AttachmentChip(a, onRemove = { onRemoveAttachment(a) }) } }
+            }
             AnimatedContent(
                 voiceMode,
                 transitionSpec = { (fadeIn(tween(180, delayMillis = 60)) + scaleIn(NeonMotion.composer(), 0.96f)) togetherWith fadeOut(tween(120)) },
@@ -137,18 +158,18 @@ fun Composer(
                     Modifier.weight(1f).horizontalScroll(rememberScrollState()),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    OutlineCircle(Lucide.Plus, "附件", onClick = onPlus)
+                    OutlineCircle(Lucide.Plus, "上传文件", onClick = onPlus)
                     NeonChip(
                         "技能", style = if (paletteOpen) ChipStyle.Active else ChipStyle.Outline,
                         icon = Lucide.Slash, height = 34.dp,
-                        onClick = { onPalette(!paletteOpen) },
+                        onClick = { thinkOpen = false; onPalette(!paletteOpen) },
                     )
                     NeonChip(
-                        "深度思考", style = if (deepThink) ChipStyle.Active else ChipStyle.Outline,
-                        icon = Lucide.Sparkles, height = 34.dp,
-                        onClick = { onDeepThink(!deepThink) },
+                        effortChip(effort),
+                        style = if (thinkOpen || effort != "none") ChipStyle.Active else ChipStyle.Outline,
+                        icon = if (effort == "none") Lucide.Zap else Lucide.Sparkles, height = 34.dp,
+                        onClick = { if (!thinkOpen) onPalette(false); thinkOpen = !thinkOpen },
                     )
-                    if (hands != null) HandsToggle(hands, onHands)
                 }
                 Spacer(Modifier.width(8.dp))
                 AnimatedContent(
@@ -280,25 +301,117 @@ private fun SkillTile(s: PaletteSkill, selected: Boolean, index: Int, modifier: 
     }
 }
 
+/** A file picked for the next message, already copied into the sandbox. */
+data class PendingAttachment(val name: String, val path: String, val mime: String, val size: Long)
 
-/** "✋ ●" capsule from S01a/S01b: lets the agent drive the phone in this turn. */
+val EFFORTS = listOf("none", "low", "medium", "high", "max")
+private val EFFORT_LABEL = mapOf("none" to "极速", "low" to "Low", "medium" to "Medium", "high" to "High", "max" to "Max")
+private val EFFORT_NOTE = mapOf(
+    "none" to "不思考，直接回答",
+    "low" to "想一下就答，适合简单问题",
+    "medium" to "日常问答和小任务",
+    "high" to "多数任务用这一档",
+    "max" to "想得最久，留给难题",
+)
+fun effortChip(e: String) = if (e == "none") "极速" else "思考 ${EFFORT_LABEL[e] ?: e}"
+
+/** Thinking level: one slider from 极速 to Max. */
 @Composable
-private fun HandsToggle(on: Boolean, onChange: (Boolean) -> Unit) {
+fun EffortPanel(effort: String, onEffort: (String) -> Unit, modifier: Modifier = Modifier) {
     val c = Neon.colors
-    val bg by animateColorAsState(if (on) c.chipActive else Color.Transparent, label = "handsBg")
-    val fg = if (on) c.onChipActive else c.inkSecondary
-    val edge = if (on) c.chipActiveBorder else c.borderHairline
-    val knob by animateDpAsState(if (on) 12.dp else 2.dp, label = "handsKnob")
+    val idx = EFFORTS.indexOf(effort).coerceAtLeast(0)
+    val accent = if (c.isDark) c.chipActive else c.inkPrimary
+    Column(
+        modifier.fillMaxWidth().floating(NeonShapes.composer, c.shadow, 14.dp)
+            .glass(NeonShapes.composer, strong = true)
+            .padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("思考", style = NeonType.bodyMedium())
+            Spacer(Modifier.width(10.dp))
+            AnimatedContent(idx, transitionSpec = { fadeIn(tween(140)) togetherWith fadeOut(tween(100)) }, label = "note") { i ->
+                Text(EFFORT_NOTE[EFFORTS[i]].orEmpty(), style = NeonType.caption().copy(color = c.inkTertiary))
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        StepSlider(idx, EFFORTS.size, { onEffort(EFFORTS[it]) }, accent = if (c.isDark) c.lime else c.inkPrimary)
+        Row(Modifier.fillMaxWidth()) {
+            EFFORTS.forEachIndexed { i, e ->
+                Text(
+                    EFFORT_LABEL[e].orEmpty(),
+                    style = NeonType.caption().copy(color = if (i == idx) c.inkPrimary else c.inkTertiary),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f).clickable { onEffort(e) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AttachmentChip(a: PendingAttachment, onRemove: () -> Unit) {
+    val c = Neon.colors
     Row(
-        Modifier.height(34.dp).clip(NeonShapes.capsule).background(bg)
-            .then(if (edge.alpha > 0f) Modifier.border(1.dp, edge, NeonShapes.capsule) else Modifier)
-            .clickable(role = Role.Switch) { onChange(!on) }.padding(horizontal = 10.dp),
+        Modifier.height(40.dp).clip(NeonShapes.small).background(c.bgTile).padding(start = 10.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Lucide.Hand, "Hands", Modifier.size(16.dp), tint = fg)
+        Icon(fileIcon(a.name, a.mime), null, Modifier.size(16.dp), tint = c.inkSecondary)
         Spacer(Modifier.width(6.dp))
-        Box(Modifier.size(26.dp, 16.dp).clip(NeonShapes.capsule).background(if (on) fg else c.borderHairline)) {
-            Box(Modifier.offset(x = knob, y = 2.dp).size(12.dp).clip(NeonShapes.capsule).background(if (on) c.chipActive else c.bgSurface))
+        Text(a.name, style = NeonType.label(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 150.dp))
+        Box(Modifier.size(32.dp).clip(NeonShapes.capsule).clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
+            Icon(Lucide.X, "移除", Modifier.size(14.dp), tint = c.inkTertiary)
         }
+    }
+}
+
+/** Icon for a file by extension or mime. */
+fun fileIcon(name: String, mime: String = ""): ImageVector {
+    val ext = name.substringAfterLast('.', "").lowercase()
+    return when {
+        mime.startsWith("image/") || ext in setOf("png", "jpg", "jpeg", "webp", "gif", "heic", "svg") -> Lucide.Image
+        mime.startsWith("video/") || ext in setOf("mp4", "mov", "mkv", "webm") -> Lucide.Video
+        mime.startsWith("audio/") || ext in setOf("mp3", "m4a", "wav", "flac", "ogg") -> Lucide.AudioLines
+        ext in setOf("xls", "xlsx", "csv", "tsv") -> Lucide.FileSpreadsheet
+        ext in setOf("ppt", "pptx", "key") -> Lucide.Presentation
+        ext in setOf("zip", "tar", "gz", "7z", "rar", "apk") -> Lucide.FileArchive
+        ext in setOf("json") -> Lucide.FileJson
+        ext in setOf("kt", "py", "js", "ts", "java", "c", "cpp", "rs", "go", "sh", "html", "css") -> Lucide.FileCode
+        else -> Lucide.FileText
+    }
+}
+
+/** Five stops on a capsule track; each stop sits over the centre of its label. Tap or drag. */
+@Composable
+private fun StepSlider(index: Int, count: Int, onChange: (Int) -> Unit, accent: Color) {
+    val c = Neon.colors
+    val frac by animateFloatAsState(index / (count - 1f), NeonMotion.composer(), label = "step")
+    val track = c.borderHairline
+    val knob = if (c.isDark) Color.White else c.bgSurface
+    val dot = c.inkTertiary.copy(alpha = 0.6f)
+    fun pick(x: Float, w: Float): Int {
+        val seg = w / count
+        return ((x - seg / 2) / seg).roundToInt().coerceIn(0, count - 1)
+    }
+    Canvas(
+        Modifier.fillMaxWidth().height(40.dp)
+            .pointerInput(count) { detectTapGestures { o -> onChange(pick(o.x, size.width.toFloat())) } }
+            .pointerInput(count, index) {
+                detectHorizontalDragGestures { ch, _ -> val i = pick(ch.position.x, size.width.toFloat()); if (i != index) onChange(i) }
+            }
+    ) {
+        val seg = size.width / count
+        val x0 = seg / 2; val x1 = size.width - seg / 2
+        val cy = size.height / 2
+        val th = 6.dp.toPx()
+        drawRoundRect(track, Offset(x0, cy - th / 2), Size(x1 - x0, th), CornerRadius(th / 2))
+        val xf = x0 + (x1 - x0) * frac
+        drawRoundRect(accent, Offset(x0, cy - th / 2), Size(xf - x0, th), CornerRadius(th / 2))
+        for (i in 0 until count) {
+            val x = x0 + seg * i
+            drawCircle(if (x <= xf) accent else dot, 3.dp.toPx(), Offset(x, cy))
+        }
+        drawCircle(Color.Black.copy(alpha = 0.18f), 12.dp.toPx(), Offset(xf, cy + 1.dp.toPx()))
+        drawCircle(knob, 11.dp.toPx(), Offset(xf, cy))
+        drawCircle(accent, 5.dp.toPx(), Offset(xf, cy))
     }
 }
