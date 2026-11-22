@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -96,6 +97,7 @@ import com.qigai.neon.guard.PendingGuardRequest
 import com.qigai.neon.hands.HandsEngineMode
 import com.qigai.neon.hands.NeonAccessibilityService
 import com.qigai.neon.oauth.GoogleDriveAuth
+import com.qigai.neon.connectors.GoogleMcp
 import com.qigai.neon.sandbox.SandboxStatus
 import com.qigai.neon.ui.chat.NeonSheetHost
 import com.qigai.neon.ui.connectors.*
@@ -217,13 +219,16 @@ fun ConnectorsRoute(vm: MainViewModel, onBack: () -> Unit, onOpenHands: () -> Un
     val a11y by NeonAccessibilityService.instance.collectAsState()
     val authorize = rememberWorkspaceAuthorizer(vm)
     var addMcp by remember { mutableStateOf(false) }
+    var googleSetup by remember { mutableStateOf(false) }
     var webhook by remember { mutableStateOf(false) }
     var detail by remember { mutableStateOf<ConnectorEntity?>(null) }
     val notif = remember(rows) { NotificationManagerCompat.getEnabledListenerPackages(ctx).contains(ctx.packageName) }
 
     val list = buildList {
-        add(ConnectorUi("google", ConnectorGroup.CLOUD, "Google", "Gmail、日历、Drive",
-            if (s.workspaceConnected) ConnectorStatus.Connected("已连接") else ConnectorStatus.Idle, monogram = "G", action = "连接"))
+        val gRows = rows.filter { GoogleMcp.byId(it.id) != null && it.status == "connected" }
+        add(ConnectorUi("google", ConnectorGroup.CLOUD, "Google",
+            if (gRows.isEmpty()) "Gmail、日历、Drive、文档、表格" else gRows.joinToString("、") { GoogleMcp.byId(it.id)!!.name },
+            if (gRows.isNotEmpty()) ConnectorStatus.Connected("${gRows.size} 个服务") else ConnectorStatus.Idle, monogram = "G", action = "连接"))
         rows.forEach { e ->
             val group = if (e.category == "local_stdio") ConnectorGroup.LOCAL else ConnectorGroup.CLOUD
             val st = when (e.status) {
@@ -255,13 +260,13 @@ fun ConnectorsRoute(vm: MainViewModel, onBack: () -> Unit, onOpenHands: () -> Un
             when (r.id) {
                 "hands" -> onOpenHands()
                 "webhook" -> webhook = true
-                "google" -> if (!s.workspaceConnected) authorize()
+                "google" -> googleSetup = true
                 else -> detail = rows.firstOrNull { it.id == r.id }
             }
         },
         onAction = { r ->
             when (r.id) {
-                "google" -> authorize()
+                "google" -> googleSetup = true
                 "hands" -> ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 "phone" -> ctx.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 "webhook" -> if (c.tokens.getWebhookUrl().isBlank()) webhook = true else scope.launch {
@@ -273,6 +278,7 @@ fun ConnectorsRoute(vm: MainViewModel, onBack: () -> Unit, onOpenHands: () -> Un
         onAddMcp = { addMcp = true },
     )
 
+    if (googleSetup) GoogleSetupDialog(vm, connected = rows.filter { GoogleMcp.byId(it.id) != null && it.status == "connected" }.map { it.id }.toSet()) { googleSetup = false }
     if (addMcp) InputDialog("添加 MCP", listOf(Field("名称"), Field("地址或沙箱命令")), "连接", { addMcp = false }) { (name, target) ->
         addMcp = false
         if (target.isNotBlank()) scope.launch {
@@ -307,8 +313,116 @@ fun ConnectorsRoute(vm: MainViewModel, onBack: () -> Unit, onOpenHands: () -> Un
 private suspend fun reconnect(vm: MainViewModel, e: ConnectorEntity) {
     val hub = vm.c.mcpHub
     val r = if (e.category == "local_stdio") hub.connectLocal(e.id, e.name, e.endpointUrl.orEmpty())
-    else hub.connectRemote(e.id, e.name, e.endpointUrl.orEmpty())
+    else hub.connectRemote(e.id, e.name, e.endpointUrl.orEmpty()).recoverCatching { err ->
+        val g = GoogleMcp.byId(e.id) ?: throw err
+        vm.c.googleMcp.signIn(listOf(g)).getOrThrow().first().second
+    }
     r.fold({ vm.toast("${e.name}：$it 个工具") }, { vm.toast("${e.name}：${it.message ?: "连接失败"}") })
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun GoogleSetupDialog(vm: MainViewModel, connected: Set<String>, onDismiss: () -> Unit) {
+    val c = Neon.colors
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val g = vm.c.googleMcp
+    val saved = remember { g.client() }
+    var id by remember { mutableStateOf(saved?.clientId.orEmpty()) }
+    var secret by remember { mutableStateOf(saved?.clientSecret.orEmpty()) }
+    var picks by remember { mutableStateOf(if (connected.isEmpty()) GoogleMcp.defaultPicks else connected) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    Dialog(onDismissRequest = { if (!busy) onDismiss() }) {
+        Column(
+            Modifier.fillMaxWidth().clip(NeonShapes.card).background(c.bgSurface).verticalScroll(rememberScrollState()).padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("连接 Google", style = NeonType.headline().copy(fontSize = 18.sp))
+            Text(
+                "走 Google 官方的 Workspace MCP。Google 不给第三方自动注册，需要你用自己的 Google Cloud 建一个只给自己用的客户端，三分钟，不用审核。",
+                style = NeonType.caption(),
+            )
+            Step(1, "加入 Google Workspace 开发者预览计划", "去加入") { com.qigai.neon.oauth.CustomTabs.open(ctx, GoogleMcp.PREVIEW_URL) }
+            Step(2, "用个人模式建客户端，类型选桌面应用，勾选给 AI 智能体使用", "去创建") { com.qigai.neon.oauth.CustomTabs.open(ctx, GoogleMcp.SETUP_URL) }
+            Step(3, "把客户端 ID 和密钥粘贴到这里", null) {}
+            listOf("客户端 ID" to id, "客户端密钥" to secret).forEachIndexed { i, (label, v) ->
+                Column(
+                    Modifier.fillMaxWidth().clip(NeonShapes.tile).background(c.bgTile).border(1.dp, c.borderCard, NeonShapes.tile)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    Text(label, style = NeonType.overline())
+                    BasicTextField(
+                        v, { if (i == 0) id = it.trim() else secret = it.trim() }, singleLine = true,
+                        textStyle = NeonType.mono().copy(fontSize = 12.sp, color = c.inkPrimary), cursorBrush = SolidColor(c.inkPrimary),
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    )
+                }
+            }
+            Text("要连接的服务", style = NeonType.overline())
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                GoogleMcp.services.forEach { sv ->
+                    val on = sv.id in picks
+                    NeonChip(
+                        sv.name, style = if (on) ChipStyle.Active else ChipStyle.Soft,
+                        icon = if (sv.id in connected) Lucide.Check else null,
+                        onClick = { picks = if (on) picks - sv.id else picks + sv.id },
+                    )
+                }
+            }
+            error?.let { Text(it, style = NeonType.caption().copy(color = c.danger)) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
+                PillButton("取消", kind = ButtonKind.Secondary, height = 40.dp, enabled = !busy, onClick = onDismiss)
+                PillButton(
+                    if (busy) "在浏览器里登录" else "登录 Google", height = 40.dp,
+                    enabled = !busy && id.endsWith(".apps.googleusercontent.com") && picks.isNotEmpty(),
+                    onClick = {
+                        busy = true; error = null
+                        g.saveClient(id, secret)
+                        scope.launch {
+                            g.signIn(GoogleMcp.services.filter { it.id in picks }).fold(
+                                onSuccess = { list ->
+                                    vm.toast("Google 已连接：" + list.joinToString("、") { "${it.first.name} ${it.second}" })
+                                    onDismiss()
+                                },
+                                onFailure = { e ->
+                                    busy = false
+                                    error = googleError(e)
+                                },
+                            )
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Step(n: Int, text: String, action: String?, onAction: () -> Unit) {
+    val c = Neon.colors
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(22.dp).clip(CircleShape).background(c.bgTile), contentAlignment = Alignment.Center) {
+            Text("$n", style = NeonType.caption().copy(color = c.inkPrimary))
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(text, style = NeonType.label(), modifier = Modifier.weight(1f))
+        if (action != null) {
+            Spacer(Modifier.width(8.dp))
+            NeonChip(action, style = ChipStyle.Outline, height = 30.dp, onClick = onAction)
+        }
+    }
+}
+
+private fun googleError(e: Throwable): String {
+    val m = e.message.orEmpty()
+    return when {
+        "403" in m || "PERMISSION_DENIED" in m -> "Google 拒绝了请求。确认已加入开发者预览，客户端勾选了给 AI 智能体使用"
+        "invalid_client" in m || "401" in m -> "客户端 ID 或密钥不对"
+        "access_denied" in m || "拒绝" in m -> "你在 Google 页面取消了授权"
+        "redirect_uri" in m -> "客户端类型要选桌面应用"
+        else -> m.take(120).ifBlank { "连接失败" }
+    }
 }
 
 // ───────────────────────── Hands ─────────────────────────

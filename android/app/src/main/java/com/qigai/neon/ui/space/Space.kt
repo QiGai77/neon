@@ -1,5 +1,16 @@
 package com.qigai.neon.ui.space
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.rotate
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -83,13 +94,14 @@ fun SpaceScreen(vm: MainViewModel, onNavigate: (String) -> Unit) {
             memory = memory, sandbox = sandbox,
             handsEnabled = s.handsEnabled, driveConnected = s.driveConnected, driveEmail = s.driveEmail,
         ),
-        onNavigate,
+        onNavigate = onNavigate,
     )
 }
 
 @Composable
-fun SpaceContent(d: SpaceData, onNavigate: (String) -> Unit) {
+fun SpaceContent(d: SpaceData, initiallyExpanded: Boolean = false, onNavigate: (String) -> Unit) {
     val c = Neon.colors
+    var more by rememberSaveable { mutableStateOf(initiallyExpanded) }
     val bottom = LocalBottomBarInset.current
     Column(
         Modifier.fillMaxSize().neonBackdrop().statusBarsPadding().verticalScroll(rememberScrollState())
@@ -120,24 +132,33 @@ fun SpaceContent(d: SpaceData, onNavigate: (String) -> Unit) {
                     }
                 }
             }
-            WideTile(
-                Lucide.CalendarClock, "定时任务",
-                if (d.taskTitles.isEmpty()) "让 Neon 每天或每周替你跑一件事" else d.taskTitles.take(2).joinToString("，"),
-                trailing = if (d.taskTitles.isEmpty()) null else "${d.tasksEnabled} 个在跑",
-            ) { onNavigate("memory") }
-            WideTile(
-                Lucide.Hand, "Hands",
-                if (d.handsEnabled) "可以替你点手机上的 App" else "打开后 Neon 能替你操作手机",
-                trailing = if (d.handsEnabled) "已开" else "未开", live = d.handsEnabled,
-            ) { onNavigate("hands") }
-            WideTile(
-                Lucide.Cloud, "Google Drive",
-                if (d.driveConnected) (d.driveEmail ?: "已连接") else "连接后对话和文件自动备份",
-                trailing = if (d.driveConnected) "已连" else null, live = d.driveConnected,
-            ) { onNavigate("settings") }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                MarketTile("技能市场", Lucide.Sparkles, Modifier.weight(1f)) { onNavigate("skill-market") }
-                MarketTile("连接器市场", Lucide.Plug, Modifier.weight(1f)) { onNavigate("connector-market") }
+            MoreToggle(more) { more = !more }
+            AnimatedVisibility(
+                visible = more,
+                enter = expandVertically(spring(dampingRatio = 0.85f, stiffness = 380f)) + fadeIn(),
+                exit = shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)) + fadeOut(),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    WideTile(
+                        Lucide.CalendarClock, "定时任务",
+                        if (d.taskTitles.isEmpty()) "让 Neon 每天或每周替你跑一件事" else d.taskTitles.take(2).joinToString("，"),
+                        trailing = if (d.taskTitles.isEmpty()) null else "${d.tasksEnabled} 个在跑",
+                    ) { onNavigate("memory") }
+                    WideTile(
+                        Lucide.Hand, "Hands",
+                        if (d.handsEnabled) "可以替你点手机上的 App" else "打开后 Neon 能替你操作手机",
+                        trailing = if (d.handsEnabled) "已开" else "未开", live = d.handsEnabled,
+                    ) { onNavigate("hands") }
+                    WideTile(
+                        Lucide.Cloud, "Google Drive",
+                        if (d.driveConnected) (d.driveEmail ?: "已连接") else "连接后对话和文件自动备份",
+                        trailing = if (d.driveConnected) "已连" else null, live = d.driveConnected,
+                    ) { onNavigate("settings") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        MarketTile("技能市场", Lucide.Sparkles, Modifier.weight(1f)) { onNavigate("skill-market") }
+                        MarketTile("连接器市场", Lucide.Plug, Modifier.weight(1f)) { onNavigate("connector-market") }
+                    }
+                }
             }
         }
     }
@@ -218,6 +239,22 @@ private fun SandboxTile(status: SandboxStatus, modifier: Modifier, onClick: () -
         Text("~ $ ▍", style = NeonType.mono().copy(color = c.terminalInk))
         Spacer(Modifier.height(4.dp))
         Text("打开终端", style = NeonType.mono().copy(color = c.lime))
+    }
+}
+
+@Composable
+private fun MoreToggle(open: Boolean, onClick: () -> Unit) {
+    val c = Neon.colors
+    val rot by animateFloatAsState(if (open) 180f else 0f, spring(dampingRatio = 0.7f, stiffness = 400f), label = "more")
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Row(
+            Modifier.height(40.dp).glass(CircleShape).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(if (open) "收起" else "更多", style = NeonType.label())
+            Spacer(Modifier.width(6.dp))
+            Icon(Lucide.ChevronDown, null, Modifier.size(16.dp).rotate(rot), tint = c.inkSecondary)
+        }
     }
 }
 

@@ -44,6 +44,24 @@ class McpHub(
         return store(id, name, "remote_mcp", url, tools)
     }
 
+    /**
+     * Connects a remote server with tokens obtained elsewhere (Google sign-in), storing what
+     * [refresh] needs so the connector renews itself like any OAuth connector.
+     */
+    suspend fun connectPreauthorized(
+        id: String, name: String, url: String,
+        accessToken: String, refreshToken: String?, tokenEndpoint: String, oc: OAuthClient,
+    ): Result<Int> {
+        tokens.saveConnectorToken(id, accessToken, refreshToken)
+        tokens.put(KEY_OAUTH + id, buildJsonObject {
+            put("token", tokenEndpoint); put("client", oc.clientId)
+            oc.clientSecret?.let { put("secret", it) }
+        }.toString())
+        dao.upsert(ConnectorEntity(id, name, "remote_mcp", "正在连接", url, "connecting", 0))
+        client.forget(url)
+        return store(id, name, "remote_mcp", url, client.listTools(url, accessToken, headers(id)))
+    }
+
     suspend fun connectLocal(id: String, name: String, command: String): Result<Int> {
         dao.upsert(ConnectorEntity(id, name, "local_stdio", "首次启动需要下载，请稍候", command, "connecting", 0))
         return store(id, name, "local_stdio", command, local.listTools(command))

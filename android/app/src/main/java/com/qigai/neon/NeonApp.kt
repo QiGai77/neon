@@ -74,6 +74,7 @@ class NeonContainer(val app: NeonApp) {
     val mcp = McpClient(Http.client)
     val mcpOAuth = com.qigai.neon.oauth.McpOAuth(app, Http.client)
     val mcpHub = com.qigai.neon.connectors.McpHub(db.connectorDao(), tokens, mcp, mcpDiscovery, mcpOAuth, localMcp)
+    val googleMcp = com.qigai.neon.connectors.GoogleMcp(tokens, mcpOAuth, mcpHub)
     val mcpMarket = com.qigai.neon.connectors.McpRegistry(Http.client)
     val device = NativeDeviceTools(app)
     val webhook = WebhookConnector(Http.client, tokens)

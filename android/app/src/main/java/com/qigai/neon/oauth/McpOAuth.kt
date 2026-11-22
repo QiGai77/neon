@@ -38,6 +38,7 @@ class McpOAuth(
         tokenEndpoint: String,
         scopes: List<String>,
         resource: String?,
+        extraParams: Map<String, String> = emptyMap(),
         client: suspend (redirectUri: String) -> com.qigai.neon.connectors.OAuthClient?,
     ): Result<Pair<OAuthTokenResponse, com.qigai.neon.connectors.OAuthClient>> = runCatching {
         val verifier = generateCodeVerifier()
@@ -56,6 +57,7 @@ class McpOAuth(
             .appendQueryParameter("state", state)
         if (scopes.isNotEmpty()) uriBuilder.appendQueryParameter("scope", scopes.joinToString(" "))
         if (!resource.isNullOrBlank()) uriBuilder.appendQueryParameter("resource", resource)
+        extraParams.forEach { (k, v) -> uriBuilder.appendQueryParameter(k, v) }
 
         val customTabs = CustomTabsIntent.Builder().setShowTitle(true).build()
         customTabs.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

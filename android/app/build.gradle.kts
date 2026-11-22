@@ -15,8 +15,8 @@ android {
         applicationId = "com.qigai.neon"
         minSdk = 26
         targetSdk = 35
-        versionCode = (System.getenv("NEON_VERSION_CODE")?.toIntOrNull()) ?: 400
-        versionName = (System.getenv("NEON_VERSION_NAME") ?: "0.4.0").removePrefix("v")
+        versionCode = (System.getenv("NEON_VERSION_CODE")?.toIntOrNull()) ?: 401
+        versionName = (System.getenv("NEON_VERSION_NAME") ?: "0.4.1").removePrefix("v")
         ndk { abiFilters += "arm64-v8a" }
     }
 
