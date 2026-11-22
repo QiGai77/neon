@@ -29,13 +29,14 @@ fun rememberDriveAuthorizer(vm: MainViewModel): () -> Unit {
     }
     return {
         scope.launch {
+            vm.c.googleAccount.accessToken()?.let { vm.onDriveAuthorized(it); return@launch }
             try {
                 val r = GoogleDriveAuth.authorize(ctx)
                 val pi = r.pendingIntent
                 if (r.hasResolution() && pi != null) launcher.launch(IntentSenderRequest.Builder(pi.intentSender).build())
                 else vm.onDriveAuthorized(r.accessToken)
             } catch (e: Exception) {
-                vm.onDriveAuthFailed("Google 授权不可用：${e.message}")
+                vm.onDriveAuthFailed("系统授权用不了，到连接器里登录 Google 就行")
             }
         }
     }

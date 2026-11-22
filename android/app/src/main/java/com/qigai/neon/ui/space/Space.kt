@@ -152,8 +152,8 @@ fun SpaceContent(d: SpaceData, initiallyExpanded: Boolean = false, onNavigate: (
                     WideTile(
                         Lucide.Cloud, "Google Drive",
                         if (d.driveConnected) (d.driveEmail ?: "已连接") else "连接后对话和文件自动备份",
-                        trailing = if (d.driveConnected) "已连" else null, live = d.driveConnected,
-                    ) { onNavigate("settings") }
+                        trailing = if (d.driveConnected) "已连" else "登录 Google", live = d.driveConnected,
+                    ) { onNavigate(if (d.driveConnected) "settings" else "connectors") }
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         MarketTile("技能市场", Lucide.Sparkles, Modifier.weight(1f)) { onNavigate("skill-market") }
                         MarketTile("连接器市场", Lucide.Plug, Modifier.weight(1f)) { onNavigate("connector-market") }
@@ -246,15 +246,15 @@ private fun SandboxTile(status: SandboxStatus, modifier: Modifier, onClick: () -
 private fun MoreToggle(open: Boolean, onClick: () -> Unit) {
     val c = Neon.colors
     val rot by animateFloatAsState(if (open) 180f else 0f, spring(dampingRatio = 0.7f, stiffness = 400f), label = "more")
-    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Row(
-            Modifier.height(40.dp).glass(CircleShape).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(if (open) "收起" else "更多", style = NeonType.label())
-            Spacer(Modifier.width(6.dp))
-            Icon(Lucide.ChevronDown, null, Modifier.size(16.dp).rotate(rot), tint = c.inkSecondary)
-        }
+    Row(
+        Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(16.dp)).background(Glass.tokens.tile)
+            .clickable(role = Role.Button, onClick = onClick),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(if (open) "收起" else "更多", style = NeonType.label().copy(color = c.inkSecondary))
+        Spacer(Modifier.width(6.dp))
+        Icon(Lucide.ChevronDown, null, Modifier.size(16.dp).rotate(rot), tint = c.inkSecondary)
     }
 }
 

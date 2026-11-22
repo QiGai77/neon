@@ -116,6 +116,10 @@ class ScreensSnapshotTest {
             com.qigai.neon.feed.FeedRepo("sample/agent-runtime", "Sample repository description for the snapshot, two lines long so the card wraps like a real one.", 2310, "Kotlin", "https://github.com", "AI Agent", "2026-11-12"),
             com.qigai.neon.feed.FeedRepo("sample/compose-glass", "Sample description.", 640, "Kotlin", "https://github.com", "Jetpack Compose", "2026-11-15"),
         ),
+        posts = listOf(
+            com.qigai.neon.feed.XPost("1", "sample_lab", "Sample Lab", null, "Sample post text for the snapshot. We are opening our MCP server so any AI Agent can call it, docs are live today.", null, 4820, System.currentTimeMillis() - 3 * 3_600_000L, "MCP"),
+            com.qigai.neon.feed.XPost("2", "sample_dev", "Sample Dev", null, "Second sample post, short.", null, 312, System.currentTimeMillis() - 26 * 3_600_000L, null),
+        ),
     )
 
     private fun home(tab: com.qigai.neon.ui.home.HomeTab) = @Composable {

@@ -74,14 +74,20 @@ class NeonContainer(val app: NeonApp) {
     val mcp = McpClient(Http.client)
     val mcpOAuth = com.qigai.neon.oauth.McpOAuth(app, Http.client)
     val mcpHub = com.qigai.neon.connectors.McpHub(db.connectorDao(), tokens, mcp, mcpDiscovery, mcpOAuth, localMcp)
-    val googleMcp = com.qigai.neon.connectors.GoogleMcp(tokens, mcpOAuth, mcpHub)
+    val googleAccount = com.qigai.neon.connectors.GoogleAccount(tokens, mcpOAuth, Http.client)
     val mcpMarket = com.qigai.neon.connectors.McpRegistry(Http.client)
     val device = NativeDeviceTools(app)
     val webhook = WebhookConnector(Http.client, tokens)
     val google = GoogleWorkspaceConnector(
         Http.client,
-        token = { if (settings.state.value.workspaceConnected) GoogleDriveAuth.silentWorkspaceToken(app) else null },
-        driveToken = { if (settings.state.value.driveConnected) runCatching { GoogleDriveAuth.silentToken(app) }.getOrNull() else null },
+        token = {
+            googleAccount.accessToken()
+                ?: if (settings.state.value.workspaceConnected) runCatching { GoogleDriveAuth.silentWorkspaceToken(app) }.getOrNull() else null
+        },
+        driveToken = {
+            googleAccount.accessToken()
+                ?: if (settings.state.value.driveConnected) runCatching { GoogleDriveAuth.silentToken(app) }.getOrNull() else null
+        },
     )
     val shizuku = ShizukuAdbEngine()
     val hands = HandsOperator(app, shizuku, riskGate, db.handsTraceDao())

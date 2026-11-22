@@ -29,6 +29,8 @@ data class FeedState(
     val loading: Boolean = false,
     val repos: List<FeedRepo> = emptyList(),
     val error: String? = null,
+    val posts: List<XPost> = emptyList(),
+    val xError: String? = null,
     val fetchedAt: Long = 0L,
 )
 

@@ -16,6 +16,8 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
 
+private const val NOT_SIGNED_IN = "ERROR: 还没登录 Google。到 空间 > 连接器 > Google 登录一次"
+
 class GoogleWorkspaceConnector(
     private val httpClient: OkHttpClient,
     /** Access token for drive.file + gmail.modify + calendar.events, or null when not granted. */
@@ -84,24 +86,80 @@ class GoogleWorkspaceConnector(
             }
         }
 
-    suspend fun listGmailMessages(query: String, maxResults: Int = 8): String = withContext(Dispatchers.IO) {
-        val token = token() ?: return@withContext "ERROR: Google 未授权"
+    /** Matching messages with sender, subject, date and snippet, so one call is enough to answer most questions. */
+    suspend fun listGmailMessages(query: String, maxResults: Int = 10): String = withContext(Dispatchers.IO) {
+        val token = token() ?: return@withContext NOT_SIGNED_IN
         val q = URLEncoder.encode(query, "UTF-8")
-        val req = Request.Builder()
-            .url("https://gmail.googleapis.com/gmail/v1/users/me/messages?q=$q&maxResults=$maxResults")
-            .header("Authorization", "Bearer $token")
-            .build()
-        httpClient.newCall(req).execute().use { resp ->
-            val raw = resp.body?.string().orEmpty()
-            if (!resp.isSuccessful) return@withContext "ERROR (${resp.code}): $raw"
+        val ids = get(token, "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=$q&maxResults=$maxResults")
+            .getOrElse { return@withContext "ERROR: ${it.message}" }
+            .let { json.parseToJsonElement(it).jsonObject["messages"]?.jsonArray.orEmpty() }
+            .mapNotNull { it.jsonObject["id"]?.jsonPrimitive?.content }
+        if (ids.isEmpty()) return@withContext "没有匹配的邮件"
+        ids.joinToString("\n\n") { id ->
+            val raw = get(token, "https://gmail.googleapis.com/gmail/v1/users/me/messages/$id?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date")
+                .getOrNull() ?: return@joinToString "id: $id"
+            val m = json.parseToJsonElement(raw).jsonObject
+            val h = m["payload"]?.jsonObject?.get("headers")?.jsonArray.orEmpty().associate {
+                it.jsonObject["name"]!!.jsonPrimitive.content to it.jsonObject["value"]!!.jsonPrimitive.content
+            }
+            val unread = m["labelIds"]?.jsonArray?.any { it.jsonPrimitive.content == "UNREAD" } == true
+            buildString {
+                append("id: $id"); if (unread) append("  未读")
+                append("\n发件人: ${h["From"].orEmpty()}\n主题: ${h["Subject"].orEmpty()}\n时间: ${h["Date"].orEmpty()}")
+                append("\n摘要: ${m["snippet"]?.jsonPrimitive?.content.orEmpty()}")
+            }
+        }
+    }
+
+    suspend fun searchDrive(query: String, maxResults: Int = 15): String = withContext(Dispatchers.IO) {
+        val token = driveToken() ?: return@withContext NOT_SIGNED_IN
+        val esc = query.replace("\\", "\\\\").replace("'", "\\'")
+        val q = if (query.isBlank()) "trashed = false" else "(name contains '$esc' or fullText contains '$esc') and trashed = false"
+        val url = "https://www.googleapis.com/drive/v3/files?q=${URLEncoder.encode(q, "UTF-8")}&pageSize=$maxResults" +
+            (if (query.isBlank()) "&orderBy=modifiedTime%20desc" else "") +
+            "&fields=${URLEncoder.encode("files(id,name,mimeType,modifiedTime,size,webViewLink)", "UTF-8")}"
+        get(token, url).fold({ it }, { "ERROR: ${it.message}" })
+    }
+
+    /** Text of a Drive file: Google Docs, Sheets and Slides are exported, plain files are downloaded. */
+    suspend fun readDriveFile(fileId: String, maxChars: Int = 40_000): String = withContext(Dispatchers.IO) {
+        val token = driveToken() ?: return@withContext NOT_SIGNED_IN
+        val meta = get(token, "https://www.googleapis.com/drive/v3/files/$fileId?fields=name,mimeType")
+            .getOrElse { return@withContext "ERROR: ${it.message}" }
+            .let { json.parseToJsonElement(it).jsonObject }
+        val mime = meta["mimeType"]?.jsonPrimitive?.content.orEmpty()
+        val export = when (mime) {
+            "application/vnd.google-apps.document", "application/vnd.google-apps.presentation" -> "text/plain"
+            "application/vnd.google-apps.spreadsheet" -> "text/csv"
+            else -> null
+        }
+        val url = if (export != null) "https://www.googleapis.com/drive/v3/files/$fileId/export?mimeType=${URLEncoder.encode(export, "UTF-8")}"
+        else "https://www.googleapis.com/drive/v3/files/$fileId?alt=media"
+        if (export == null && !(mime.startsWith("text/") || mime.contains("json") || mime.contains("xml") || mime.contains("csv")))
+            return@withContext "${meta["name"]?.jsonPrimitive?.content}: $mime 不是文本文件，读不了内容"
+        get(token, url).fold({ t -> if (t.length > maxChars) t.take(maxChars) + "\n…已截断" else t }, { "ERROR: ${it.message}" })
+    }
+
+    private fun get(token: String, url: String): Result<String> = runCatching {
+        httpClient.newCall(Request.Builder().url(url).header("Authorization", "Bearer $token").build()).execute().use { r ->
+            val raw = r.body?.string().orEmpty()
+            if (!r.isSuccessful) error(friendly(r.code, raw))
             raw
         }
     }
 
-    suspend fun listCalendarEvents(maxResults: Int = 10): String = withContext(Dispatchers.IO) {
-        val token = token() ?: return@withContext "ERROR: Google 未授权"
+    private fun friendly(code: Int, raw: String): String = when {
+        "SERVICE_DISABLED" in raw || "has not been used in project" in raw ->
+            "这个 Google API 还没在你的 Cloud 项目里启用。打开报错里的链接点启用，过一两分钟再试：$raw".take(600)
+        "insufficient" in raw.lowercase() -> "Google 登录时没给这项权限，到连接器里重新登录 Google"
+        code == 401 -> "Google 登录已失效，到连接器里重新登录 Google"
+        else -> "($code) ${raw.take(500)}"
+    }
+
+    suspend fun listCalendarEvents(maxResults: Int = 15): String = withContext(Dispatchers.IO) {
+        val token = token() ?: return@withContext NOT_SIGNED_IN
         val req = Request.Builder()
-            .url("https://www.googleapis.com/calendar/v3/calendars/primary/events?maxResults=$maxResults&singleEvents=true&orderBy=startTime")
+            .url("https://www.googleapis.com/calendar/v3/calendars/primary/events?maxResults=$maxResults&singleEvents=true&orderBy=startTime&timeMin=${URLEncoder.encode(java.time.Instant.now().toString(), "UTF-8")}")
             .header("Authorization", "Bearer $token")
             .build()
         httpClient.newCall(req).execute().use { resp ->
@@ -112,7 +170,7 @@ class GoogleWorkspaceConnector(
     }
 
     suspend fun readGmailMessage(messageId: String): String = withContext(Dispatchers.IO) {
-        val token = token() ?: return@withContext "ERROR: Google 未授权"
+        val token = token() ?: return@withContext NOT_SIGNED_IN
         val req = Request.Builder()
             .url("https://gmail.googleapis.com/gmail/v1/users/me/messages/$messageId?format=full")
             .header("Authorization", "Bearer $token")
@@ -125,7 +183,7 @@ class GoogleWorkspaceConnector(
     }
 
     suspend fun sendGmailMessage(to: String, subject: String, bodyText: String): String = withContext(Dispatchers.IO) {
-        val token = token() ?: return@withContext "ERROR: Google 未授权"
+        val token = token() ?: return@withContext NOT_SIGNED_IN
         val mime = "To: $to\r\nSubject: =?UTF-8?B?${android.util.Base64.encodeToString(subject.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)}?=\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n$bodyText"
         val encoded = android.util.Base64.encodeToString(
             mime.toByteArray(Charsets.UTF_8),
@@ -146,7 +204,7 @@ class GoogleWorkspaceConnector(
 
     suspend fun createCalendarEvent(summary: String, startIso: String, endIso: String, description: String = ""): String =
         withContext(Dispatchers.IO) {
-            val token = token() ?: return@withContext "ERROR: Google 未授权"
+            val token = token() ?: return@withContext NOT_SIGNED_IN
             val payload = buildJsonObject {
                 put("summary", summary)
                 if (description.isNotBlank()) put("description", description)

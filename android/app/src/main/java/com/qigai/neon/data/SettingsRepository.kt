@@ -30,6 +30,7 @@ data class AppSettings(
     val workspaceConnected: Boolean get() = raw[SettingsRepository.WORKSPACE] == "1"
     /** Ordered drawer cards the user kept; null = default set. */
     val interests: List<String> get() = raw[SettingsRepository.INTERESTS]?.split(',')?.map { it.trim() }?.filter { it.isNotBlank() } ?: SettingsRepository.DEFAULT_INTERESTS
+    val xHandles: List<String> get() = raw[SettingsRepository.X_HANDLES]?.split(',')?.map { it.trim() }?.filter { it.isNotBlank() } ?: SettingsRepository.DEFAULT_X_HANDLES
     val drawerCards: List<String> get() = raw[SettingsRepository.DRAWER_CARDS]?.split(',')?.filter { it.isNotBlank() } ?: SettingsRepository.DEFAULT_DRAWER
 }
 
@@ -55,6 +56,9 @@ class SettingsRepository(private val dao: SettingDao, scope: CoroutineScope) {
         const val DRAWER_CARDS = "drawer_cards"
         /** 速览 interests, comma separated */
         const val INTERESTS = "glance_interests"
+        /** 速览 X accounts, comma separated handles */
+        const val X_HANDLES = "glance_x_handles"
+        val DEFAULT_X_HANDLES = listOf("OpenAI", "AnthropicAI", "GoogleDeepMind", "deepseek_ai", "Alibaba_Qwen", "huggingface", "AndroidDev")
         val DEFAULT_INTERESTS = listOf("AI Agent", "Jetpack Compose", "独立开发", "开源模型", "MCP")
         val DEFAULT_DRAWER = listOf("quota", "sandbox", "drive", "hubs")
         val ALL_DRAWER = listOf("quota", "sandbox", "drive", "hubs")

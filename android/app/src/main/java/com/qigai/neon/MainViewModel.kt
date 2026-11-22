@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 
 sealed class QuotaState {
@@ -97,26 +98,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- 速览 ----------
     private val githubFeed = com.qigai.neon.feed.GitHubFeed(com.qigai.neon.provider.Http.client) { c.tokens.getConnectorToken("github") }
+    private val xFeed = com.qigai.neon.feed.XFeed(com.qigai.neon.provider.Http.client, java.io.File(app.cacheDir, "x_feed.json"))
     private val _feed = MutableStateFlow(com.qigai.neon.feed.FeedState())
     val feed: StateFlow<com.qigai.neon.feed.FeedState> = _feed.asStateFlow()
 
     fun refreshFeed(force: Boolean = false) {
         val now = System.currentTimeMillis()
         if (_feed.value.loading) return
-        if (!force && _feed.value.repos.isNotEmpty() && now - _feed.value.fetchedAt < 30 * 60_000L) return
+        if (!force && (_feed.value.repos.isNotEmpty() || _feed.value.posts.isNotEmpty()) && now - _feed.value.fetchedAt < 30 * 60_000L) return
         _feed.value = _feed.value.copy(loading = true, error = null)
         viewModelScope.launch {
-            _feed.value = try {
-                val repos = githubFeed.fetch(settings.value.interests)
-                com.qigai.neon.feed.FeedState(repos = repos, fetchedAt = System.currentTimeMillis())
-            } catch (e: Exception) {
-                _feed.value.copy(loading = false, error = e.message ?: "加载失败")
-            }
+            val st = settings.value
+            val gh = async { runCatching { githubFeed.fetch(st.interests) } }
+            val x = async { runCatching { xFeed.fetch(st.xHandles, st.interests) } }
+            val g = gh.await(); val xr = x.await()
+            _feed.value = com.qigai.neon.feed.FeedState(
+                repos = g.getOrElse { _feed.value.repos }, error = g.exceptionOrNull()?.let { it.message ?: "加载失败" },
+                posts = xr.getOrElse { _feed.value.posts }, xError = xr.exceptionOrNull()?.let { it.message ?: "加载失败" },
+                fetchedAt = System.currentTimeMillis(),
+            )
         }
     }
 
     fun setInterests(list: List<String>) = viewModelScope.launch {
         c.settings.put(SettingsRepository.INTERESTS, list.map { it.replace(",", " ").trim() }.filter { it.isNotBlank() }.distinct().joinToString(","))
+        _feed.value = _feed.value.copy(fetchedAt = 0L)
+    }
+
+    fun setXHandles(list: List<String>) = viewModelScope.launch {
+        c.settings.put(SettingsRepository.X_HANDLES, list.map { it.trim().removePrefix("@").replace(",", "") }.filter { it.isNotBlank() }.distinct().joinToString(","))
         _feed.value = _feed.value.copy(fetchedAt = 0L)
     }
 

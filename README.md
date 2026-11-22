@@ -70,7 +70,7 @@ DeepSeek 官方 API 和 OpenCode Go 订阅，深度思考，流式输出。每�
 让 Neon 直接操作手机上的应用，比如打开菜鸟查快递。支持无障碍和 Shizuku 两种方式。遇到付款、发送、删除，先指纹确认；遇到密码框，交给你自己输入。
 
 **连接器**
-内置 35 个常用服务。Google 走官方的 Workspace MCP，一次登录接上 Gmail、日历、Drive、文档、表格、幻灯片和联系人，需要先在 Google Cloud 用个人模式建一个自己的客户端。远程 MCP 服务器自动走 OAuth 授权，也可以在沙箱里跑本地 MCP。Webhook 可以接 Tasker 等自动化工具。
+内置 35 个常用服务。Google 登录一次就能读写 Gmail、日历和 Drive，对话也顺带备份到 Drive，只需要在 Google Cloud 建一个自己的桌面应用客户端。速览里的 X 帖子不用登录，加上想看的账号就行。远程 MCP 服务器自动走 OAuth 授权，也可以在沙箱里跑本地 MCP。Webhook 可以接 Tasker 等自动化工具。
 
 **技能**
 技能是一个 SKILL.md 文件，自带 12 个，也能从技能市场安装。对话里输入 `/` 调用。Hands 跑完一次任务，可以把过程存成技能，下次直接用。
@@ -101,7 +101,7 @@ v0.4 换成了液态玻璃：浮动的磨砂导航，半透明卡片，背后是
 
 ## 隐私
 
-Neon 没有自己的服务器。API Key 加密存在本机 Keystore。Google 授权只申请需要的范围，Drive 只能看到 Neon 自己创建的文件。
+Neon 没有自己的服务器。API Key 加密存在本机 Keystore。Google 授权只申请邮件、日历和 Drive 需要的范围，Drive 里只能改 Neon 自己创建的文件，其他文件只读。
 
 ## 构建
 

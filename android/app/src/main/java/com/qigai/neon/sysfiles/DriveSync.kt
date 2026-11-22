@@ -35,7 +35,9 @@ class DriveSync(private val context: Context) {
     /** Silent token from Play services, reused for 45 min (Google access tokens live ~60 min). */
     private suspend fun token(): String {
         cached?.let { (t, at) -> if (System.currentTimeMillis() - at < 45 * 60_000) return t }
-        val t = GoogleDriveAuth.silentToken(context) ?: throw DriveAuthExpired()
+        val t = c.googleAccount.accessToken()
+            ?: runCatching { GoogleDriveAuth.silentToken(context) }.getOrNull()
+            ?: throw DriveAuthExpired()
         cached = t to System.currentTimeMillis()
         return t
     }

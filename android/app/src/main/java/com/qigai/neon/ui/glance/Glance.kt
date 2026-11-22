@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -53,6 +56,7 @@ import com.qigai.neon.MainViewModel
 import com.qigai.neon.feed.FeedRepo
 import com.qigai.neon.ui.components.ButtonKind
 import com.qigai.neon.ui.components.IconSquircle
+import com.qigai.neon.ui.components.NetImage
 import com.qigai.neon.ui.components.NeonCard
 import com.qigai.neon.ui.components.PillButton
 import com.qigai.neon.ui.home.GlassChip
@@ -71,7 +75,7 @@ import java.util.Locale
 private enum class Filter(val label: String) { ALL("全部"), GAP("信息差"), X("X"), GITHUB("GitHub") }
 
 /**
- * 速览: what Neon pushes to you. 信息差 (asks Neon to dig), X (not wired yet), GitHub (new repos
+ * 速览: what Neon pushes to you. 信息差 (asks Neon to dig), X (new posts from accounts you pick), GitHub (new repos
  * that match your interests, ranked by stars). Every card says why it is here and can be handed to Neon.
  */
 @Composable
@@ -80,13 +84,15 @@ fun GlanceScreen(vm: MainViewModel, onAsk: (String) -> Unit) {
     val s by vm.settings.collectAsState()
     var editing by remember { mutableStateOf(false) }
     val uri = LocalUriHandler.current
-    LaunchedEffect(s.interests) { vm.refreshFeed() }
+    LaunchedEffect(s.interests, s.xHandles) { vm.refreshFeed() }
     GlanceContent(
         feed, s.interests,
         onAsk = onAsk, onRefresh = { vm.refreshFeed(force = true) }, onEdit = { editing = true },
         onOpen = { url -> runCatching { uri.openUri(url) } },
     )
-    if (editing) InterestsSheet(s.interests, onDismiss = { editing = false }, onSave = { vm.setInterests(it); editing = false })
+    if (editing) InterestsSheet(s.interests, s.xHandles, onDismiss = { editing = false }) { i, h ->
+        vm.setInterests(i); vm.setXHandles(h); editing = false
+    }
 }
 
 @Composable
@@ -121,8 +127,33 @@ fun GlanceContent(
         if (filter == Filter.ALL || filter == Filter.GAP) item {
             GapCard(interests) { onAsk(gapPrompt(interests)) }
         }
-        if (filter == Filter.ALL || filter == Filter.X) item { XCard() }
-        if (filter == Filter.ALL || filter == Filter.GITHUB) {
+        if (filter == Filter.X) {
+            when {
+                feed.posts.isEmpty() && feed.loading -> item { Hint("正在取你关注账号的新帖") }
+                feed.posts.isEmpty() && feed.xError != null -> item { Hint("X 暂时没取到：${feed.xError}", action = "重试", onAction = onRefresh) }
+                feed.posts.isEmpty() -> item { Hint("这些账号最近一周没有新帖，加几个你常看的账号", action = "加账号", onAction = onEdit) }
+                else -> items(feed.posts, key = { "x" + it.id }) { p -> PostCard(p, onOpen = { onOpen(p.url) }, onAsk = { onAsk(postPrompt(p)) }) }
+            }
+        }
+        if (filter == Filter.ALL && (feed.posts.isNotEmpty() || feed.repos.isNotEmpty())) {
+            val mixed = buildList<Any> {
+                val a = feed.posts.iterator(); val b = feed.repos.iterator()
+                while (a.hasNext() || b.hasNext()) {
+                    repeat(2) { if (a.hasNext()) add(a.next()) }
+                    if (b.hasNext()) add(b.next())
+                }
+            }
+            items(mixed, key = { if (it is com.qigai.neon.feed.XPost) "x" + it.id else (it as FeedRepo).fullName }) { e ->
+                when (e) {
+                    is com.qigai.neon.feed.XPost -> PostCard(e, onOpen = { onOpen(e.url) }, onAsk = { onAsk(postPrompt(e)) })
+                    is FeedRepo -> RepoCard(e, onOpen = { onOpen(e.url) }, onAsk = { onAsk(repoPrompt(e)) })
+                }
+            }
+        }
+        if (filter == Filter.ALL && feed.posts.isEmpty() && feed.repos.isEmpty()) item {
+            Hint(if (feed.loading) "正在按你的兴趣挑内容" else "暂时没取到内容", action = if (feed.loading) null else "重试", onAction = onRefresh)
+        }
+        if (filter == Filter.GITHUB) {
             when {
                 feed.repos.isEmpty() && feed.loading -> item { Hint("正在按你的兴趣找新项目") }
                 feed.repos.isEmpty() && feed.error != null -> item {
@@ -139,6 +170,9 @@ fun GlanceContent(
 
 private fun gapPrompt(interests: List<String>) =
     "按我的兴趣（${interests.joinToString("、")}），去 X、Hacker News 和 GitHub 找最近 24 小时里大多数人还没注意到、但对我有用的信息差。挑 3 条，每条说清楚是什么、为什么对我有用，附上原始链接。"
+
+private fun postPrompt(p: com.qigai.neon.feed.XPost) =
+    "帮我看看这条 X 帖子：${p.url}\n@${p.handle}：${p.text}\n讲了什么、背景是什么、对我有没有用。"
 
 private fun repoPrompt(r: FeedRepo) =
     "帮我看看这个 GitHub 项目：${r.url}\n它做什么、靠不靠谱、和我的 Neon 项目有没有关系，值不值得试。"
@@ -172,20 +206,56 @@ private fun GapCard(interests: List<String>, onDig: () -> Unit) {
 }
 
 @Composable
-private fun XCard() {
+private fun PostCard(p: com.qigai.neon.feed.XPost, onOpen: () -> Unit, onAsk: () -> Unit) {
     val c = Neon.colors
-    NeonCard(Modifier.padding(horizontal = 16.dp)) {
+    NeonCard(Modifier.padding(horizontal = 16.dp), onClick = onOpen) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).background(Glass.tokens.tile), contentAlignment = Alignment.Center) {
-                Text("𝕏", style = NeonType.bodyMedium())
-            }
-            Spacer(Modifier.width(12.dp))
+            val av = Modifier.size(34.dp).clip(CircleShape).background(Glass.tokens.tile)
+            if (p.avatar != null) NetImage(p.avatar, av) else Box(av)
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text("X 帖子", style = NeonType.cardTitle())
-                Text("接入后从你的关注和喜欢里挑帖子推给你", style = NeonType.caption())
+                Text(p.name, style = NeonType.label().copy(fontFamily = Neon.fonts.medium), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("@${p.handle}  ${ago(p.createdAt)}", style = NeonType.caption(), maxLines = 1)
             }
-            Text("下个版本", style = NeonType.caption().copy(color = c.inkTertiary))
+            Text("𝕏", style = NeonType.label().copy(color = c.inkTertiary))
         }
+        Spacer(Modifier.height(10.dp))
+        Text(p.text, style = NeonType.body().copy(fontSize = NeonType.item().fontSize, lineHeight = NeonType.secondary().lineHeight), maxLines = 8, overflow = TextOverflow.Ellipsis)
+        p.image?.let {
+            Spacer(Modifier.height(10.dp))
+            NetImage(it, Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(14.dp)).background(Glass.tokens.tile))
+        }
+        p.matched?.let { m ->
+            Spacer(Modifier.height(10.dp))
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(c.chipActive.copy(alpha = 0.7f)).padding(horizontal = 10.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Lucide.Sparkles, null, Modifier.size(14.dp), tint = c.onChipActive)
+                Spacer(Modifier.width(6.dp))
+                Text("提到你的兴趣 $m", style = NeonType.caption().copy(color = c.onChipActive))
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Lucide.Heart, null, Modifier.size(14.dp), tint = c.inkSecondary)
+            Spacer(Modifier.width(4.dp))
+            Text(formatStars(p.likes), style = NeonType.tnum(NeonType.caption()))
+            Spacer(Modifier.weight(1f))
+            PillButton("打开", kind = ButtonKind.Secondary, icon = Lucide.ExternalLink, height = 34.dp, onClick = onOpen)
+            Spacer(Modifier.width(8.dp))
+            PillButton("问 Neon", icon = Lucide.MessageCircle, height = 34.dp, onClick = onAsk)
+        }
+    }
+}
+
+private fun ago(t: Long): String {
+    val m = (System.currentTimeMillis() - t) / 60_000
+    return when {
+        m < 1 -> "刚刚"
+        m < 60 -> "$m 分钟前"
+        m < 60 * 24 -> "${m / 60} 小时前"
+        else -> "${m / 1440} 天前"
     }
 }
 
@@ -243,21 +313,29 @@ private fun Hint(text: String, action: String? = null, onAction: () -> Unit = {}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun InterestsSheet(current: List<String>, onDismiss: () -> Unit, onSave: (List<String>) -> Unit) {
+private fun InterestsSheet(current: List<String>, handles: List<String>, onDismiss: () -> Unit, onSave: (List<String>, List<String>) -> Unit) {
     val c = Neon.colors
     val list = remember { mutableStateListOf<String>().apply { addAll(current) } }
+    val xs = remember { mutableStateListOf<String>().apply { addAll(handles) } }
     var draft by remember { mutableStateOf("") }
+    var xDraft by remember { mutableStateOf("") }
     fun add() { val t = draft.trim(); if (t.isNotEmpty() && t !in list) list.add(t); draft = "" }
+    fun addX() {
+        val t = xDraft.trim().removePrefix("https://").removePrefix("x.com/").removePrefix("twitter.com/").removePrefix("@").substringBefore('/').substringBefore('?')
+        if (t.isNotEmpty() && xs.none { it.equals(t, true) }) xs.add(t); xDraft = ""
+    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = Glass.tokens.fillStrong.copy(alpha = 0.96f),
         scrimColor = c.scrim.copy(alpha = 0.35f),
     ) {
-        Column(Modifier.padding(horizontal = 20.dp).navigationBarsPadding().padding(bottom = 16.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).navigationBarsPadding().imePadding().padding(bottom = 16.dp)) {
             Text("推送什么给你", style = NeonType.headline())
             Spacer(Modifier.height(4.dp))
-            Text("点一下去掉，速览按这些找 GitHub 新项目和信息差", style = NeonType.caption())
+            Text("点一下去掉。兴趣用来挑 GitHub 新项目和信息差，X 账号的新帖直接推给你", style = NeonType.caption())
+            Spacer(Modifier.height(14.dp))
+            Text("兴趣", style = NeonType.overline())
             Spacer(Modifier.height(14.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 list.forEach { t -> GlassChip(t, true, icon = Lucide.X) { list.remove(t) } }
@@ -280,7 +358,30 @@ private fun InterestsSheet(current: List<String>, onDismiss: () -> Unit, onSave:
                 PillButton("添加", kind = ButtonKind.Secondary, height = 32.dp, enabled = draft.isNotBlank()) { add() }
             }
             Spacer(Modifier.height(18.dp))
-            PillButton("保存", modifier = Modifier.fillMaxWidth(), height = 46.dp, enabled = list.isNotEmpty()) { onSave(list.toList()) }
+            Text("X 账号", style = NeonType.overline())
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                xs.forEach { t -> GlassChip("@$t", true, icon = Lucide.X) { xs.remove(t) } }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(
+                Modifier.fillMaxWidth().height(44.dp).clip(CircleShape).background(Glass.tokens.tile).padding(start = 16.dp, end = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.weight(1f)) {
+                    if (xDraft.isEmpty()) Text("账号名或主页链接，比如 karpathy", style = NeonType.label().copy(color = c.inkTertiary))
+                    BasicTextField(
+                        xDraft, { xDraft = it }, singleLine = true,
+                        textStyle = NeonType.label(), cursorBrush = SolidColor(c.inkPrimary),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { addX() }),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                PillButton("添加", kind = ButtonKind.Secondary, height = 32.dp, enabled = xDraft.isNotBlank()) { addX() }
+            }
+            Spacer(Modifier.height(18.dp))
+            PillButton("保存", modifier = Modifier.fillMaxWidth(), height = 46.dp, enabled = list.isNotEmpty()) { onSave(list.toList(), xs.toList()) }
         }
     }
 }

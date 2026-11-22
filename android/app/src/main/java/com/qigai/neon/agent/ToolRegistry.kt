@@ -69,11 +69,13 @@ class ToolRegistry(
             ToolSpec("hands_list_apps", "列出手机上所有可启动的应用名称与包名", objSchema()),
             ToolSpec("hands_open_app", "按应用中文名或包名启动手机应用", objSchema("package_name" to "应用名或 Android 包名", required = listOf("package_name"))),
             ToolSpec("hands_back", "执行系统返回键", objSchema()),
-            ToolSpec("gmail_list_messages", "查询 Gmail 邮件列表", objSchema("query" to "搜索关键词")),
+            ToolSpec("gmail_list_messages", "搜索 Gmail，返回每封的发件人、主题、时间和摘要。query 用 Gmail 搜索语法，如 is:unread、from:xx、newer_than:7d，留空是最新邮件", objSchema("query" to "Gmail 搜索语句")),
             ToolSpec("gmail_read_message", "读取指定 Gmail 邮件的完整内容", objSchema("message_id" to "邮件 ID", required = listOf("message_id"))),
             ToolSpec("gmail_send_message", "发送 Gmail 邮件（需 Sentinel 指纹确认）", objSchema("to" to "收件人邮箱", "subject" to "邮件主题", "body" to "正文内容", required = listOf("to", "subject", "body"))),
             ToolSpec("calendar_list_events", "列出 Google Calendar 近期日程", objSchema()),
             ToolSpec("calendar_create_event", "在 Google Calendar 创建日程", objSchema("summary" to "日程标题", "start_iso" to "开始时间 ISO8601", "end_iso" to "结束时间 ISO8601", "description" to "备注", required = listOf("summary", "start_iso", "end_iso"))),
+            ToolSpec("drive_search", "按文件名或全文搜索 Google Drive，留空列出最近修改的文件", objSchema("query" to "关键词")),
+            ToolSpec("drive_read_file", "读取 Google Drive 文件的文本内容，文档和幻灯片导出为文本，表格导出为 CSV", objSchema("file_id" to "文件 ID", required = listOf("file_id"))),
             ToolSpec("drive_write_file", "向 Google Drive /Neon/附件 写入文本或 CSV 文件", objSchema("filename" to "文件名", "content" to "文件内容", required = listOf("filename", "content"))),
             ToolSpec("phone_read_clipboard", "读取手机剪贴板文本", objSchema()),
             ToolSpec("phone_list_notifications", "读取最近捕获的手机通知", objSchema()),
@@ -172,6 +174,8 @@ class ToolRegistry(
                 args["end_iso"]?.jsonPrimitive?.content.orEmpty(),
                 args["description"]?.jsonPrimitive?.content.orEmpty(),
             )
+            "drive_search" -> googleWorkspace.searchDrive(args["query"]?.jsonPrimitive?.content.orEmpty())
+            "drive_read_file" -> googleWorkspace.readDriveFile(args["file_id"]?.jsonPrimitive?.content.orEmpty())
             "drive_write_file" -> {
                 val name = args["filename"]?.jsonPrimitive?.content ?: "output.txt"
                 val content = args["content"]?.jsonPrimitive?.content.orEmpty()
