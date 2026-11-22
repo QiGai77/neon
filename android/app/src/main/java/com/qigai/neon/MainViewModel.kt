@@ -121,7 +121,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val st = settings.value
             val gh = async { runCatching { githubFeed.fetch(st.interests) } }
-            val x = async { runCatching { xFeed.fetch(st.xHandles, st.interests) } }
+            val x = async { runCatching { xFeed.fetch(st.xHandles, st.interests, st.focusWords) } }
             val g = gh.await(); val xr = x.await()
             _feed.value = com.qigai.neon.feed.FeedState(
                 repos = g.getOrElse { _feed.value.repos }, error = g.exceptionOrNull()?.let { it.message ?: "加载失败" },
@@ -133,6 +133,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setInterests(list: List<String>) = viewModelScope.launch {
         c.settings.put(SettingsRepository.INTERESTS, list.map { it.replace(",", " ").trim() }.filter { it.isNotBlank() }.distinct().joinToString(","))
+        _feed.value = _feed.value.copy(fetchedAt = 0L)
+    }
+
+    fun setFocusWords(list: List<String>) = viewModelScope.launch {
+        c.settings.put(SettingsRepository.FOCUS, list.map { it.replace(",", " ").trim() }.filter { it.isNotBlank() }.distinct().joinToString(","))
         _feed.value = _feed.value.copy(fetchedAt = 0L)
     }
 

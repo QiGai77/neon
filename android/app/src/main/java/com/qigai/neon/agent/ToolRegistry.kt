@@ -44,6 +44,7 @@ class ToolRegistry(
     private val space: com.qigai.neon.space.SpaceStore? = null,
     private val vault: com.qigai.neon.vault.Vault? = null,
     private val vaultForms: com.qigai.neon.vault.VaultFormGate? = null,
+    private val memory: com.qigai.neon.sysfiles.MemoryManager? = null,
     private val browser: com.qigai.neon.vault.WebBrowser? = null,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -84,6 +85,8 @@ class ToolRegistry(
             ToolSpec("drive_search", "按文件名或全文搜索 Google Drive，留空列出最近修改的文件", objSchema("query" to "关键词")),
             ToolSpec("drive_read_file", "读取 Google Drive 文件的文本内容，文档和幻灯片导出为文本，表格导出为 CSV", objSchema("file_id" to "文件 ID", required = listOf("file_id"))),
             ToolSpec("drive_write_file", "向 Google Drive /Neon/附件 写入文本或 CSV 文件", objSchema("filename" to "文件名", "content" to "文件内容", required = listOf("filename", "content"))),
+            ToolSpec("memory_search", "按关键词查用户的长期记忆，系统提示里没列出的旧记忆在这里找", objSchema("query" to "关键词", required = listOf("query"))),
+            ToolSpec("memory_save", "用户明确要你记住或忘记某件事时调用。记住：给 text，身份和长期规则把 core 设为 true。忘记：给 forget_id", objSchema("text" to "一句完整的陈述", "core" to "true 或 false", "forget_id" to "要忘记的记忆 id，来自 memory_search")),
             ToolSpec("present_file", "把沙箱里做好的文件交给用户，对话里会显示成可打开、可分享的文件卡片。做完 Word、PDF、表格、图片、视频等交付物后调用", objSchema("path" to "文件在沙箱里的绝对路径，比如 /workspace/out/报告.docx", "title" to "卡片上显示的标题，可省略", required = listOf("path"))),
             ToolSpec("space_cards", "管理用户空间页的卡片：list 列出，add 添加，update 修改，remove 删除，move 调整位置。生活卡片类型 train 高铁票、flight 航班、parcel 快递、nav 导航、note 自定义；功能卡片类型 files skills connectors sandbox memory tasks hands drive。看到车票、航班、快递短信或用户要求时主动添加",
                 buildJsonObject {
@@ -233,6 +236,15 @@ class ToolRegistry(
                 else "OK: 已交给用户 ${f.name}，${f.length()} 字节"
             }
             "space_cards" -> space?.handleTool(args) ?: "ERROR: 空间不可用"
+            "memory_search" -> memory?.search(args["query"]?.jsonPrimitive?.content.orEmpty()) ?: "ERROR: 记忆不可用"
+            "memory_save" -> {
+                val m = memory ?: return "ERROR: 记忆不可用"
+                val text = args["text"]?.jsonPrimitive?.content.orEmpty().trim()
+                val forget = args["forget_id"]?.jsonPrimitive?.content
+                if (forget != null) { m.removeMemory(forget); "OK: 已忘记 $forget" }
+                else if (text.isBlank()) "ERROR: text 为空"
+                else { m.addMemory(text, if (args["core"]?.jsonPrimitive?.content == "true") com.qigai.neon.sysfiles.MemoryItem.KIND_CORE else com.qigai.neon.sysfiles.MemoryItem.KIND_FACT); "OK: 已记住" }
+            }
             "phone_read_clipboard" -> nativeDevice.readClipboard()
             "phone_list_notifications" -> nativeDevice.listRecentNotifications()
             "vault_list" -> {

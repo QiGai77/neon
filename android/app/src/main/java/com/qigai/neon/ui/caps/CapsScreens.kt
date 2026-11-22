@@ -188,12 +188,22 @@ fun SentinelHost(vm: MainViewModel, onSandboxScreen: Boolean, content: @Composab
 // ───────────────────────── 连接器 ─────────────────────────
 
 @Composable
-fun rememberWorkspaceAuthorizer(vm: MainViewModel): () -> Unit {
+fun rememberWorkspaceAuthorizer(vm: MainViewModel, onDone: () -> Unit = {}): () -> Unit {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    fun finish(token: String?) = scope.launch {
+        vm.c.settings.put(SettingsRepository.WORKSPACE, "1")
+        // Google's own Gmail, Calendar and Drive MCP servers need a preview grant; the built-in tools replace them.
+        GoogleAccount.legacyIds.forEach { runCatching { vm.c.mcpHub.disconnect(it) } }
+        vm.onDriveAuthorized(token)
+        vm.toast("Google 已连接")
+        onDone()
+    }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
-        if (res.resultCode == Activity.RESULT_OK) scope.launch { vm.c.settings.put(SettingsRepository.WORKSPACE, "1"); vm.toast("Google 已连接") }
-        else vm.toast("已取消")
+        if (res.resultCode == Activity.RESULT_OK) {
+            val token = runCatching { GoogleDriveAuth.resultFromIntent(ctx, res.data).accessToken }.getOrNull()
+            finish(token)
+        } else vm.toast("已取消")
     }
     return {
         scope.launch {
@@ -201,9 +211,9 @@ fun rememberWorkspaceAuthorizer(vm: MainViewModel): () -> Unit {
                 val r = GoogleDriveAuth.authorizeWorkspace(ctx)
                 val pi = r.pendingIntent
                 if (r.hasResolution() && pi != null) launcher.launch(IntentSenderRequest.Builder(pi.intentSender).build())
-                else { vm.c.settings.put(SettingsRepository.WORKSPACE, "1"); vm.toast("Google 已连接") }
+                else finish(r.accessToken)
             } catch (e: Exception) {
-                vm.toast("Google 授权不可用：${e.message}")
+                vm.toast(googleError(e))
             }
         }
     }
@@ -226,9 +236,11 @@ fun ConnectorsRoute(vm: MainViewModel, onBack: () -> Unit, onOpenHands: () -> Un
     val notif = remember(rows) { NotificationManagerCompat.getEnabledListenerPackages(ctx).contains(ctx.packageName) }
 
     val list = buildList {
+        val gAccount = gMail ?: s.driveEmail?.takeIf { s.workspaceConnected && it.isNotBlank() }
+        val gOn = gMail != null || s.workspaceConnected
         add(ConnectorUi("google", ConnectorGroup.CLOUD, "Google",
-            gMail ?: "Gmail、日历、Drive",
-            if (gMail != null) ConnectorStatus.Connected("已登录") else ConnectorStatus.Idle, monogram = "G", action = "登录"))
+            gAccount ?: "Gmail、日历、Drive",
+            if (gOn) ConnectorStatus.Connected("已连接") else ConnectorStatus.Idle, monogram = "G", action = "连接"))
         rows.forEach { e ->
             val group = if (e.category == "local_stdio") ConnectorGroup.LOCAL else ConnectorGroup.CLOUD
             val st = when (e.status) {
@@ -266,7 +278,7 @@ fun ConnectorsRoute(vm: MainViewModel, onBack: () -> Unit, onOpenHands: () -> Un
         },
         onAction = { r ->
             when (r.id) {
-                "google" -> googleSetup = true
+                "google" -> if (gMail != null || s.workspaceConnected) googleSetup = true else authorize()
                 "hands" -> ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 "phone" -> ctx.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 "webhook" -> if (c.tokens.getWebhookUrl().isBlank()) webhook = true else scope.launch {
@@ -278,7 +290,7 @@ fun ConnectorsRoute(vm: MainViewModel, onBack: () -> Unit, onOpenHands: () -> Un
         onAddMcp = { addMcp = true },
     )
 
-    if (googleSetup) GoogleSetupDialog(vm) { googleSetup = false }
+    if (googleSetup) GoogleSetupDialog(vm, authorize) { googleSetup = false }
     if (addMcp) InputDialog("添加 MCP", listOf(Field("名称"), Field("地址或沙箱命令")), "连接", { addMcp = false }) { (name, target) ->
         addMcp = false
         if (target.isNotBlank()) scope.launch {
@@ -318,7 +330,7 @@ private suspend fun reconnect(vm: MainViewModel, e: ConnectorEntity) {
 }
 
 @Composable
-private fun GoogleSetupDialog(vm: MainViewModel, onDismiss: () -> Unit) {
+private fun GoogleSetupDialog(vm: MainViewModel, oneTap: () -> Unit, onDismiss: () -> Unit) {
     val c = Neon.colors
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -329,6 +341,8 @@ private fun GoogleSetupDialog(vm: MainViewModel, onDismiss: () -> Unit) {
     var secret by remember { mutableStateOf(saved?.clientSecret.orEmpty()) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val st by vm.settings.collectAsState()
+    var own by remember { mutableStateOf(saved != null) }
     Dialog(onDismissRequest = { if (!busy) onDismiss() }) {
         Column(
             Modifier.fillMaxWidth().clip(NeonShapes.card).background(c.bgSurface).verticalScroll(rememberScrollState()).padding(20.dp),
@@ -343,7 +357,26 @@ private fun GoogleSetupDialog(vm: MainViewModel, onDismiss: () -> Unit) {
                 }
                 return@Column
             }
-            Text("登录一次，Neon 就能读写 Gmail、日历和 Drive。需要一个你自己的 Google Cloud 客户端，只给自己用，不用审核。", style = NeonType.caption())
+            if (st.workspaceConnected && !own) {
+                Text("已连接${st.driveEmail?.takeIf { it.isNotBlank() }?.let { " $it" } ?: ""}。Neon 可以读写 Gmail、日历和 Drive，对话也会备份到 Drive。", style = NeonType.caption())
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
+                    PillButton("断开", kind = ButtonKind.Danger, height = 40.dp, onClick = {
+                        scope.launch { vm.c.settings.put(SettingsRepository.WORKSPACE, null) }
+                        onDismiss()
+                    })
+                    PillButton("好", height = 40.dp, onClick = onDismiss)
+                }
+                return@Column
+            }
+            if (!own) {
+                Text("选一个 Google 账号，点允许就行。Neon 会读写 Gmail、日历和 Drive，令牌只存在这台手机上。", style = NeonType.caption())
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
+                    PillButton("用自己的客户端", kind = ButtonKind.Secondary, height = 40.dp, onClick = { own = true })
+                    PillButton("连接 Google", height = 40.dp, onClick = { onDismiss(); oneTap() })
+                }
+                return@Column
+            }
+            Text("用你自己的 Google Cloud 桌面应用客户端登录，只给自己用，不用审核。", style = NeonType.caption())
             Step(1, "建一个客户端，类型选桌面应用", "去创建") { com.qigai.neon.oauth.CustomTabs.open(ctx, GoogleAccount.SETUP_URL) }
             Step(2, "把客户端 ID 和密钥粘贴到这里", null) {}
             listOf("客户端 ID" to id, "客户端密钥" to secret).forEachIndexed { i, (label, v) ->
@@ -407,7 +440,11 @@ private fun Step(n: Int, text: String, action: String?, onAction: () -> Unit) {
 
 private fun googleError(e: Throwable): String {
     val m = e.message.orEmpty()
+    val code = (e as? com.google.android.gms.common.api.ApiException)?.statusCode
     return when {
+        code == 10 -> "这个安装包的签名没在 Google 登记，可以先用自己的客户端连接"
+        code == 7 -> "网络连不上 Google"
+        code == 16 || code == 13 -> "已取消"
         "invalid_client" in m || "401" in m -> "客户端 ID 或密钥不对"
         "access_denied" in m || "拒绝" in m -> "你在 Google 页面取消了授权"
         "redirect_uri" in m -> "客户端类型要选桌面应用"

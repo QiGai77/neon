@@ -34,6 +34,8 @@ data class AppSettings(
     val workspaceConnected: Boolean get() = raw[SettingsRepository.WORKSPACE] == "1"
     /** Ordered drawer cards the user kept; null = default set. */
     val interests: List<String> get() = raw[SettingsRepository.INTERESTS]?.split(',')?.map { it.trim() }?.filter { it.isNotBlank() } ?: SettingsRepository.DEFAULT_INTERESTS
+    val memoryAuto: Boolean get() = raw[SettingsRepository.MEMORY_AUTO] != "false"
+    val focusWords: List<String> get() = raw[SettingsRepository.FOCUS]?.split(',')?.map { it.trim() }?.filter { it.isNotBlank() } ?: SettingsRepository.DEFAULT_FOCUS
     val xHandles: List<String> get() = raw[SettingsRepository.X_HANDLES]?.split(',')?.map { it.trim() }?.filter { it.isNotBlank() } ?: SettingsRepository.DEFAULT_X_HANDLES
     // ── v0.4.5 我的 ──
     val agentName: String get() = raw[SettingsRepository.AGENT_NAME]?.takeIf { it.isNotBlank() } ?: "Neon"
@@ -133,6 +135,11 @@ class SettingsRepository(private val dao: SettingDao, scope: CoroutineScope) {
         const val INTERESTS = "glance_interests"
         /** 速览 X accounts, comma separated handles */
         const val X_HANDLES = "glance_x_handles"
+        /** 速览 重点关注: posts with these words go first and get a tag. */
+        const val FOCUS = "glance_focus"
+        /** whether memory learns from each finished turn */
+        const val MEMORY_AUTO = "memory_auto"
+        val DEFAULT_FOCUS = listOf("羊毛", "白嫖", "0成本", "零成本", "薅", "免费领")
         val DEFAULT_X_HANDLES = listOf("OpenAI", "AnthropicAI", "GoogleDeepMind", "deepseek_ai", "Alibaba_Qwen", "huggingface", "AndroidDev")
         val DEFAULT_INTERESTS = listOf("AI Agent", "Jetpack Compose", "独立开发", "开源模型", "MCP")
         val DEFAULT_DRAWER = listOf("quota", "sandbox", "drive", "hubs")

@@ -70,11 +70,12 @@ import com.qigai.neon.ui.theme.Glass
 import com.qigai.neon.ui.theme.Neon
 import com.qigai.neon.ui.theme.NeonType
 import com.qigai.neon.ui.theme.neonBackdrop
+import com.qigai.neon.ui.theme.glass
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private enum class Filter(val label: String) { ALL("全部"), GAP("信息差"), X("X"), GITHUB("GitHub") }
+private enum class Filter(val label: String) { ALL("全部"), FOCUS("重点关注"), GAP("信息差"), X("X"), GITHUB("GitHub") }
 
 /**
  * 速览: what Neon pushes to you. 信息差 (asks Neon to dig), X (new posts from accounts you pick), GitHub (new repos
@@ -86,14 +87,14 @@ fun GlanceScreen(vm: MainViewModel, onAsk: (String) -> Unit) {
     val s by vm.settings.collectAsState()
     var editing by remember { mutableStateOf(false) }
     val uri = LocalUriHandler.current
-    LaunchedEffect(s.interests, s.xHandles) { vm.refreshFeed() }
+    LaunchedEffect(s.interests, s.xHandles, s.focusWords) { vm.refreshFeed() }
     GlanceContent(
-        feed, s.interests,
+        feed, s.interests, focus = s.focusWords,
         onAsk = onAsk, onRefresh = { vm.refreshFeed(force = true) }, onEdit = { editing = true },
         onOpen = { url -> runCatching { uri.openUri(url) } },
     )
-    if (editing) InterestsSheet(s.interests, s.xHandles, onDismiss = { editing = false }) { i, h ->
-        vm.setInterests(i); vm.setXHandles(h); editing = false
+    if (editing) InterestsSheet(s.interests, s.xHandles, s.focusWords, onDismiss = { editing = false }) { i, h, f ->
+        vm.setInterests(i); vm.setXHandles(h); vm.setFocusWords(f); editing = false
     }
 }
 
@@ -105,6 +106,7 @@ fun GlanceContent(
     onRefresh: () -> Unit,
     onEdit: () -> Unit,
     onOpen: (String) -> Unit,
+    focus: List<String> = emptyList(),
     today: String = LocalDate.now().format(DateTimeFormatter.ofPattern("M 月 d 日 EEEE", Locale.CHINA)),
 ) {
     var filter by rememberSaveable { mutableStateOf(Filter.ALL) }
@@ -124,6 +126,12 @@ fun GlanceContent(
                 items(Filter.entries) { f -> GlassChip(f.label, f == filter) { filter = f } }
                 item { GlassChip("兴趣", false, icon = Lucide.Plus, onClick = onEdit) }
             }
+        }
+        if (filter == Filter.FOCUS) {
+            item { Box(Modifier.padding(bottom = 8.dp)) { FocusCard(focus) { onAsk(focusPrompt(focus)) } } }
+            val hits = feed.posts.filter { it.focus != null }
+            if (hits.isEmpty()) item { Hint(if (feed.loading) "正在找带这些词的帖子" else "关注的账号最近没有带这些词的帖子，可以让 Neon 去 X 上搜", action = "改关注词", onAction = onEdit) }
+            else items(hits, key = { "f" + it.id }) { p -> PostCard(p, onOpen = { onOpen(p.url) }, onAsk = { onAsk(postPrompt(p)) }) }
         }
         if (filter == Filter.ALL || filter == Filter.GAP) item {
             Box(Modifier.padding(bottom = 8.dp)) { GapCard(interests) { onAsk(gapPrompt(interests)) } }
@@ -166,6 +174,27 @@ fun GlanceContent(
                 }
             }
         }
+    }
+}
+
+private fun focusPrompt(words: List<String>) =
+    "用内置浏览器打开 X 搜索最新帖子，关键词：${words.joinToString(" OR ")}，网址 https://x.com/search?q=${java.net.URLEncoder.encode(words.joinToString(" OR "), "UTF-8")}&f=live 。如果安全表单里有 x.com 的登录就带上。挑出最近 48 小时里真实可用、门槛低的 5 条，说清楚怎么领、要付出什么、有没有风险，附原帖链接。"
+
+@Composable
+private fun FocusCard(words: List<String>, onDig: () -> Unit) {
+    val c = Neon.colors
+    Column(
+        Modifier.padding(horizontal = 16.dp).fillMaxWidth().glass(RoundedCornerShape(24.dp)).clip(RoundedCornerShape(24.dp))
+            .clickable(onClick = onDig).padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Lucide.Flame, null, Modifier.size(18.dp), tint = c.inkPrimary)
+            Spacer(Modifier.width(8.dp))
+            Text("让 Neon 去 X 上搜", style = NeonType.item(), modifier = Modifier.weight(1f))
+            Icon(Lucide.ArrowUpRight, null, Modifier.size(16.dp), tint = c.inkSecondary)
+        }
+        Text(words.joinToString("  "), style = NeonType.caption())
     }
 }
 
@@ -232,7 +261,17 @@ private fun PostCard(p: com.qigai.neon.feed.XPost, onOpen: () -> Unit, onAsk: ()
                   }
                     Icon(Lucide.Ellipsis, null, Modifier.size(18.dp), tint = c.inkTertiary)
                 }
-                p.matched?.let { m ->
+                p.focus?.let { f ->
+                    Row(
+                        Modifier.padding(top = 4.dp).clip(CircleShape).background(c.chipActive).border(1.dp, c.chipActiveBorder, CircleShape).padding(horizontal = 8.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Lucide.Flame, null, Modifier.size(12.dp), tint = c.onChipActive)
+                        Spacer(Modifier.width(4.dp))
+                        Text("重点关注 $f", style = NeonType.caption().copy(color = c.onChipActive))
+                    }
+                }
+                if (p.focus == null) p.matched?.let { m ->
                     Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Lucide.Sparkles, null, Modifier.size(13.dp), tint = c.inkTertiary)
                         Spacer(Modifier.width(4.dp))
@@ -368,12 +407,15 @@ private fun Hint(text: String, action: String? = null, onAction: () -> Unit = {}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun InterestsSheet(current: List<String>, handles: List<String>, onDismiss: () -> Unit, onSave: (List<String>, List<String>) -> Unit) {
+private fun InterestsSheet(current: List<String>, handles: List<String>, focus: List<String>, onDismiss: () -> Unit, onSave: (List<String>, List<String>, List<String>) -> Unit) {
     val c = Neon.colors
     val list = remember { mutableStateListOf<String>().apply { addAll(current) } }
     val xs = remember { mutableStateListOf<String>().apply { addAll(handles) } }
     var draft by remember { mutableStateOf("") }
     var xDraft by remember { mutableStateOf("") }
+    val fs = remember { mutableStateListOf<String>().apply { addAll(focus) } }
+    var fDraft by remember { mutableStateOf("") }
+    fun addF() { val t = fDraft.trim(); if (t.isNotEmpty() && t !in fs) fs.add(t); fDraft = "" }
     fun add() { val t = draft.trim(); if (t.isNotEmpty() && t !in list) list.add(t); draft = "" }
     fun addX() {
         val t = xDraft.trim().removePrefix("https://").removePrefix("x.com/").removePrefix("twitter.com/").removePrefix("@").substringBefore('/').substringBefore('?')
@@ -436,7 +478,30 @@ private fun InterestsSheet(current: List<String>, handles: List<String>, onDismi
                 PillButton("添加", kind = ButtonKind.Secondary, height = 32.dp, enabled = xDraft.isNotBlank()) { addX() }
             }
             Spacer(Modifier.height(18.dp))
-            PillButton("保存", modifier = Modifier.fillMaxWidth(), height = 46.dp, enabled = list.isNotEmpty()) { onSave(list.toList(), xs.toList()) }
+            Text("重点关注", style = NeonType.overline())
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                fs.forEach { t -> GlassChip(t, true, icon = Lucide.X) { fs.remove(t) } }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(
+                Modifier.fillMaxWidth().height(44.dp).clip(CircleShape).background(Glass.tokens.tile).padding(start = 16.dp, end = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.weight(1f)) {
+                    if (fDraft.isEmpty()) Text("带这些词的帖子排在最前，比如 羊毛", style = NeonType.label().copy(color = c.inkTertiary))
+                    BasicTextField(
+                        fDraft, { fDraft = it }, singleLine = true,
+                        textStyle = NeonType.label(), cursorBrush = SolidColor(c.inkPrimary),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { addF() }),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                PillButton("添加", kind = ButtonKind.Secondary, height = 32.dp, enabled = fDraft.isNotBlank()) { addF() }
+            }
+            Spacer(Modifier.height(18.dp))
+            PillButton("保存", modifier = Modifier.fillMaxWidth(), height = 46.dp, enabled = list.isNotEmpty()) { onSave(list.toList(), xs.toList(), fs.toList()) }
         }
     }
 }

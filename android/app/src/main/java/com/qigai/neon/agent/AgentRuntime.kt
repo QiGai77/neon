@@ -221,7 +221,7 @@ class AgentRuntime(
         val system = buildString {
             append(SYSTEM)
             persona().takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
-            memory.formatForPrompt().takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
+            memory.formatForPrompt(lastUserText).takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
             skills.catalogForPrompt().takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
             skills.matchByPrompt(lastUserText)?.let { sk ->
                 append("\n\n【命中技能 ").append(sk.name).append("】")

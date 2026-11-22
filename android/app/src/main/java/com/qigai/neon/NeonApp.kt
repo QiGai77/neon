@@ -13,6 +13,7 @@ import com.qigai.neon.connectors.NativeDeviceTools
 import com.qigai.neon.connectors.WebhookConnector
 import com.qigai.neon.provider.ChatMessage
 import com.qigai.neon.data.ContentBlock
+import com.qigai.neon.data.BlocksJson
 import com.qigai.neon.data.EncryptedTokenStore
 import com.qigai.neon.data.NeonDatabase
 import com.qigai.neon.data.SettingsRepository
@@ -107,7 +108,7 @@ class NeonContainer(val app: NeonApp) {
         shellExecutor = shell, handsOperator = hands, googleWorkspace = google, nativeDevice = device,
         webhookConnector = webhook, mcpClient = mcp, localStdioMcp = localMcp,
         connectorDao = db.connectorDao(), mcpHub = mcpHub, tokenStore = tokens, riskGate = riskGate,
-        files = files, space = space,
+        files = files, space = space, memory = memory,
         vault = vault, vaultForms = vaultForms, browser = browser,
     )
     val agent = AgentRuntime(
@@ -118,6 +119,41 @@ class NeonContainer(val app: NeonApp) {
     ) { cid ->
         val s = settings.state.value
         if (s.driveConnected && s.driveAutoSync) DriveSync.enqueue(app, cid)
+        scope.launch { runCatching { autoTitle(cid) } }
+        scope.launch { runCatching { reflectMemory(cid) } }
+    }
+
+    /**
+     * After the first finished turn, asks the model for a short title. Only replaces the title the app
+     * set from the first message, so a name the user typed is never overwritten.
+     */
+    /** Lets memory learn from the turn that just ended (mem0-style add, update, delete). */
+    private suspend fun reflectMemory(cid: String) {
+        if (!settings.state.value.memoryAuto) return
+        val msgs = db.messages().list(cid)
+        val user = msgs.lastOrNull { m -> m.role == "user" && BlocksJson.decode(m.blocks).any { it is ContentBlock.Text } } ?: return
+        val userText = BlocksJson.decode(user.blocks).filterIsInstance<ContentBlock.Text>().joinToString("\n") { it.text }
+        val reply = msgs.lastOrNull { it.role == "assistant" }?.let { m ->
+            BlocksJson.decode(m.blocks).filterIsInstance<ContentBlock.Text>().joinToString("\n") { it.text }
+        }.orEmpty()
+        memory.reflect(userText, reply) { p -> completeOnce(p) }
+    }
+
+    private suspend fun autoTitle(cid: String) {
+        val conv = db.conversations().get(cid) ?: return
+        val msgs = db.messages().list(cid)
+        val users = msgs.filter { it.role == "user" }.map { BlocksJson.decode(it.blocks) }.filter { b -> b.none { it is ContentBlock.ToolResult } }
+        if (users.size != 1) return
+        val ask = users.first().filterIsInstance<ContentBlock.Text>().joinToString(" ") { it.text }.replace(Regex("\\s+"), " ").trim()
+        if (conv.title != ask.take(20) && conv.title != "新对话") return
+        val reply = msgs.lastOrNull { it.role == "assistant" }?.let { m ->
+            BlocksJson.decode(m.blocks).filterIsInstance<ContentBlock.Text>().joinToString(" ") { it.text }
+        }.orEmpty()
+        if (ask.isBlank() && reply.isBlank()) return
+        val prompt = "给这段对话起一个标题：不超过 12 个汉字，概括用户要做的事，不要标点、引号和前缀，只输出标题。\n\n用户：${ask.take(600)}\n\n助手：${reply.take(600)}"
+        val title = completeOnce(prompt).lines().firstOrNull { it.isNotBlank() }.orEmpty()
+            .trim().trim('"', '“', '”', '「', '」', '《', '》', '。', '.').removePrefix("标题：").removePrefix("标题:").trim().take(24)
+        if (title.isNotBlank() && db.conversations().get(cid)?.title == conv.title) db.conversations().rename(cid, title, conv.updatedAt)
     }
     private val deepseekAsr: suspend (ByteArray) -> String = { wav -> deepseek.transcribe(wav) }
     val voice = VoiceInput(app, scope) {

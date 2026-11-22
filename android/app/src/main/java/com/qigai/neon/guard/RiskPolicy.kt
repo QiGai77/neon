@@ -39,6 +39,8 @@ object RiskPolicy {
         "phone_read_clipboard",
         "phone_list_notifications",
         "memory_read",
+        "memory_search",
+        "memory_save",
         "skill_list",
     )
 

@@ -16,7 +16,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
 
-private const val NOT_SIGNED_IN = "ERROR: 还没登录 Google。到 空间 > 连接器 > Google 登录一次"
+private const val NOT_SIGNED_IN = "ERROR: Google 未连接。请用户到 空间 > 连接器 > Google 点连接，选账号后点允许即可，不需要自己建客户端"
 
 class GoogleWorkspaceConnector(
     private val httpClient: OkHttpClient,
@@ -150,7 +150,7 @@ class GoogleWorkspaceConnector(
 
     private fun friendly(code: Int, raw: String): String = when {
         "SERVICE_DISABLED" in raw || "has not been used in project" in raw ->
-            "这个 Google API 还没在你的 Cloud 项目里启用。打开报错里的链接点启用，过一两分钟再试：$raw".take(600)
+            "这项 Google 服务暂时不可用，到连接器里重新连接 Google 再试"
         "insufficient" in raw.lowercase() -> "Google 登录时没给这项权限，到连接器里重新登录 Google"
         code == 401 -> "Google 登录已失效，到连接器里重新登录 Google"
         else -> "($code) ${raw.take(500)}"

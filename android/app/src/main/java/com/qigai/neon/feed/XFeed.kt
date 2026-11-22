@@ -30,6 +30,8 @@ data class XPost(
     val replies: Int = 0,
     val reposts: Int = 0,
     val verified: Boolean = false,
+    /** the 重点关注 word the text contains, if any */
+    val focus: String? = null,
 ) {
     val url get() = "https://x.com/$handle/status/$id"
 }
@@ -47,7 +49,7 @@ class XFeed(private val http: OkHttpClient, private val cacheFile: java.io.File)
     private val dateFmt = DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss Z yyyy", Locale.US)
     private val nextData = Regex("""<script id="__NEXT_DATA__" type="application/json">(.*?)</script>""", RegexOption.DOT_MATCHES_ALL)
 
-    suspend fun fetch(handles: List<String>, interests: List<String>, days: Int = 7, limit: Int = 30): List<XPost> = coroutineScope {
+    suspend fun fetch(handles: List<String>, interests: List<String>, focus: List<String> = emptyList(), days: Int = 7, limit: Int = 30): List<XPost> = coroutineScope {
         val list = handles.map { it.trim().removePrefix("@") }.filter { it.isNotBlank() }.distinctBy { it.lowercase() }.take(20)
         val now = System.currentTimeMillis()
         // stalest first, a few per refresh, stop at the first rate limit
@@ -67,10 +69,15 @@ class XFeed(private val http: OkHttpClient, private val cacheFile: java.io.File)
         if (due.isNotEmpty()) save()
         val cutoff = now - days * 86_400_000L
         val all = list.flatMap { cache[it.lowercase()]?.second.orEmpty() }
-            .map { p -> p.copy(matched = interests.firstOrNull { p.text.contains(it, ignoreCase = true) }) }
+            .map { p ->
+                p.copy(
+                    matched = interests.firstOrNull { p.text.contains(it, ignoreCase = true) },
+                    focus = focus.firstOrNull { p.text.contains(it, ignoreCase = true) },
+                )
+            }
         val recent = all.filter { it.createdAt >= cutoff }.distinctBy { it.id }
         if (recent.isEmpty() && lastError != null) throw lastError!!
-        recent.sortedByDescending { it.createdAt }.take(limit)
+        recent.sortedWith(compareByDescending<XPost> { it.focus != null }.thenByDescending { it.createdAt }).take(limit)
     }
 
     private fun load(into: HashMap<String, Pair<Long, List<XPost>>>) = runCatching {

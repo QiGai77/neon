@@ -311,32 +311,65 @@ private fun MdBlockView(b: MdBlock) {
     val body = NeonType.body()
     when (b) {
         is MdBlock.Heading -> {
-            val size = when (b.level) { 1 -> 22.sp; 2 -> 20.sp; 3 -> 18.sp; else -> 16.sp }
-            val st = NeonType.bodyMedium().copy(fontSize = size, lineHeight = size * 1.4f)
-            MdText(b.text, st)
+            // Clear steps between levels: h1 and h2 get air above and a short accent tick, h4+ reads as a label.
+            val (size, ink) = when (b.level) { 1 -> 21.sp to c.inkPrimary; 2 -> 18.5.sp to c.inkPrimary; 3 -> 16.5.sp to c.inkPrimary; else -> 15.sp to c.inkSecondary }
+            val st = NeonType.bodyMedium().copy(fontSize = size, lineHeight = size * 1.35f, color = ink)
+            if (b.level <= 2) Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(3.dp).height(size.value.dp * 0.9f).clip(NeonShapes.capsule).background(if (c.isDark) c.lime else c.inkPrimary))
+                Spacer(Modifier.width(8.dp))
+                MdText(b.text, st)
+            } else MdText(b.text, st)
         }
         is MdBlock.Paragraph -> MdText(b.text, body)
         is MdBlock.LinkCard -> com.qigai.neon.ui.chat.LinkOrFileCard(b.url, b.label)
-        is MdBlock.Quote -> Row(Modifier.height(IntrinsicSize.Min)) {
-            Box(Modifier.width(3.dp).fillMaxHeight().background(c.borderHairline))
-            Spacer(Modifier.width(10.dp))
-            val st = body.copy(color = c.inkSecondary)
-            MdText(b.text, st)
+        is MdBlock.Quote -> {
+            val callout = Regex("""^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)]\s*""", RegexOption.IGNORE_CASE).find(b.text)
+            if (callout != null) {
+                val kind = callout.groupValues[1].uppercase()
+                val (label, tint) = when (kind) {
+                    "TIP" -> "提示" to c.live
+                    "IMPORTANT" -> "重要" to c.inkPrimary
+                    "WARNING" -> "注意" to c.warn
+                    "CAUTION" -> "警告" to c.danger
+                    else -> "说明" to c.inkSecondary
+                }
+                Column(
+                    Modifier.fillMaxWidth().clip(NeonShapes.item).background(tint.copy(alpha = 0.10f))
+                        .border(1.dp, tint.copy(alpha = 0.28f), NeonShapes.item).padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(label, style = NeonType.label().copy(fontFamily = Neon.fonts.medium, color = if (kind == "NOTE") c.inkSecondary else tint))
+                    MdText(b.text.substring(callout.range.last + 1).trimStart(), body)
+                }
+            } else Row(Modifier.height(IntrinsicSize.Min).clip(NeonShapes.item).background(c.bgSubtle.copy(alpha = 0.5f))) {
+                Box(Modifier.width(3.dp).fillMaxHeight().background(c.inkTertiary))
+                Spacer(Modifier.width(12.dp))
+                MdText(b.text, body.copy(color = c.inkSecondary), )
+                Spacer(Modifier.width(12.dp))
+            }
         }
-        is MdBlock.Rule -> Box(Modifier.fillMaxWidth().height(1.dp).background(c.borderHairline))
-        is MdBlock.ListBlock -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        is MdBlock.Rule -> Box(Modifier.padding(vertical = 4.dp).fillMaxWidth().height(1.dp).background(c.borderHairline))
+        is MdBlock.ListBlock -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             var num = b.start
             b.items.forEach { (depth, text) ->
-                Row(Modifier.padding(start = (depth * 16).dp)) {
-                    val marker = if (b.ordered) "${num++}." else "•"
-                    Text(marker, style = NeonType.tnum(body).copy(color = c.inkSecondary), modifier = Modifier.widthIn(min = 22.dp))
+                Row(Modifier.padding(start = (depth * 18).dp)) {
                     val task = text.startsWith("[ ] ") || text.startsWith("[x] ") || text.startsWith("[X] ")
-                    val shown = if (task) (if (text[1] == ' ') "☐ " else "☑ ") + text.drop(4) else text
-                    MdText(shown, body)
+                    val marker = when {
+                        task -> if (text[1] == ' ') "☐" else "☑"
+                        b.ordered && depth == 0 -> "${num++}."
+                        b.ordered -> "${num++})"
+                        else -> when (depth % 3) { 0 -> "•"; 1 -> "◦"; else -> "▪" }
+                    }
+                    Text(
+                        marker,
+                        style = NeonType.tnum(body).copy(color = if (b.ordered && !task) c.inkPrimary else c.inkTertiary, fontFamily = if (b.ordered) Neon.fonts.medium else body.fontFamily),
+                        modifier = Modifier.widthIn(min = if (b.ordered) 24.dp else 18.dp),
+                    )
+                    MdText(if (task) text.drop(4) else text, body)
                 }
             }
         }
-        is MdBlock.Code -> CodeBlock(b.lang, b.code)
+        is MdBlock.Code -> if (b.lang.equals("mermaid", true)) MermaidBlock(b.code) else CodeBlock(b.lang, b.code)
         is MdBlock.Math -> MathBlock(b.tex)
         is MdBlock.Table -> MdTable(b)
     }
@@ -381,7 +414,7 @@ private fun MdTable(t: MdBlock.Table) {
     Box(Modifier.fillMaxWidth().clip(NeonShapes.item).border(1.dp, c.borderHairline, NeonShapes.item).horizontalScroll(rememberScrollState())) {
         Column {
             listOf(t.header).plus(t.rows).forEachIndexed { ri, row ->
-                Row(Modifier.background(if (ri == 0) c.bgSubtle else c.bgSurface)) {
+                Row(Modifier.background(if (ri == 0) c.bgSubtle else if (ri % 2 == 0) c.bgTile.copy(alpha = 0.5f) else c.bgSurface)) {
                     for (ci in 0 until cols) {
                         val cell = row.getOrElse(ci) { "" }
                         val s = if (ri == 0) st.copy(fontFamily = Neon.fonts.medium) else st
