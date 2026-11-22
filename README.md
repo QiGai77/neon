@@ -17,7 +17,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/hero-dark.jpg" />
-  <img src="docs/hero-light.jpg" alt="Neon 对话 速览 空间 我的" width="100%" />
+  <img src="docs/hero-light.jpg" alt="Neon 对话 速览 空间 我的，v0.4.4" width="100%" />
 </picture>
 
 </div>
@@ -61,6 +61,61 @@ DeepSeek 官方 API 和 OpenCode Go 订阅，流式输出。思考档位用滑�
 </tr>
 </table>
 
+## 看看效果
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/features/math-dark.jpg" />
+  <img src="docs/features/math-light.jpg" alt="公式和文件卡片" width="100%" />
+</picture>
+
+**公式和文件卡片**
+数学公式直接排版。Neon 做好的 Word、PDF 和引用的链接都是卡片，点开就看，也能分享出去。
+
+</td>
+<td width="50%" valign="top">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/features/think-dark.jpg" />
+  <img src="docs/features/think-light.jpg" alt="思考滑条" width="100%" />
+</picture>
+
+**想多久由你定**
+从极速到 Max 一条滑条。图片、文档、视频拖进来就能让 Neon 处理。
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/features/space-dark.jpg" />
+  <img src="docs/features/space-light.jpg" alt="空间编辑" width="100%" />
+</picture>
+
+**空间自己排**
+高铁票、航班、快递、导航都能做成卡片。编辑时卡片会轻轻晃动，可以换位置、调宽窄、删掉。
+
+</td>
+<td width="50%" valign="top">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/features/x-dark.jpg" />
+  <img src="docs/features/x-light.jpg" alt="速览里的 X 帖子" width="100%" />
+</picture>
+
+**原汁原味的 X**
+头像、认证标、回复转帖喜欢都在原来的位置，多了一个问 Neon。
+
+</td>
+</tr>
+</table>
+
+<sub>截图由 Roborazzi 用示例数据渲染。</sub>
+
 ## 能做什么
 
 **Linux 沙箱**
@@ -83,11 +138,6 @@ Neon 会记住你告诉它的事，每次对话前带上。定时任务按时在
 ## 设计
 
 v0.4 换成了液态玻璃：浮动的磨砂导航，半透明卡片，背后是柔和的色场。颜色、模糊、圆角、间距、动效参数和每个交互的说明都在 [DESIGN.md](docs/design/v0.4/DESIGN.md)，26 张设计稿在 [screens](docs/design/v0.4/screens)。
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/design/v0.4/flow-dark.jpg" />
-  <img src="docs/design/v0.4/flow-light.jpg" alt="Neon v0.4 交互流程" width="100%" />
-</picture>
 
 ## 安装
 
