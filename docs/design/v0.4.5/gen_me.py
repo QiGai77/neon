@@ -61,6 +61,7 @@ def me():
       <div class="card" style="margin-top:10px;padding:0 14px">
         {r('key-round','模型与密钥','DeepSeek V4 Pro')}
         {r('palette','外观','跟随系统')}
+        {r('message-square','对话样式', extra=chr(60)+'div style="width:128px"'+chr(62)+seg(['文档','气泡'],1)+'</div>')}
         {r('brain','记忆与定时任务','12 条')}
         {r('info','关于 Neon','v0.4.4', last=True)}
       </div>
@@ -146,7 +147,6 @@ def chat(mode):
         <span class="muted" style="font-size:11.5px">DeepSeek V4 Pro</span></div>
       <div class="btnc">{ic('square-pen',17)}</div></div>
     <div style="padding:6px 16px 0">
-      <div style="width:150px;margin:6px auto 0">{seg2}</div>
       {user('帮我把本月账单整理成表格，再查一下快递到哪了')}
       {fold}
       {neon('整理好了，4 封账单合计 ¥1,286.40。顺丰包裹在新街口派送中，今天 18:00 前送到。', card)}
