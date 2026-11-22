@@ -52,7 +52,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val settings: StateFlow<AppSettings> = c.settings.state
     val configured: StateFlow<Set<String>> = c.tokens.configured
-    val agentState: StateFlow<AgentState> = c.agent.state
+    /** The open conversation's state. Other conversations keep running on their own. */
+    val agentState: StateFlow<AgentState> by lazy {
+        kotlinx.coroutines.flow.combine(_current, c.agent.states) { id, m -> id?.let { m[it] } ?: AgentState.Idle }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, AgentState.Idle)
+    }
+    /** Conversations with a turn in progress. */
+    val runningIds: StateFlow<Set<String>> = c.agent.states
+        .let { f -> kotlinx.coroutines.flow.flow { f.collect { m -> emit(m.filterValues { it.busy }.keys) } } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
     val voice = c.voice
 
     val conversations: StateFlow<List<ConversationEntity>> = c.db.conversations().observeAll()
@@ -132,7 +140,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Starts a fresh chat with [prompt]. Returns false when Neon is busy or no model is connected. */
     fun askNeon(prompt: String): Boolean {
-        if (agentState.value.busy) { toast("Neon 还在忙上一件事"); return false }
         if (turnConfig() == null) { toast("请先连接一个模型"); return false }
         _current.value = null
         return send(prompt)
@@ -181,14 +188,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val t = text.trim()
         if (t.isEmpty() || agentState.value.busy) return false
         val cfg = turnConfig() ?: run { toast("请先连接一个模型"); return false }
+        val before = _current.value
         viewModelScope.launch {
-            val cid = c.agent.send(_current.value, t, cfg)
-            _current.value = cid
+            val cid = c.agent.send(before, t, cfg)
+            if (_current.value == before) _current.value = cid
         }
         return true
     }
 
-    fun stop() = c.agent.stop()
+    fun stop() { _current.value?.let { c.agent.stop(it) } }
 
     fun regenerate() {
         val cid = _current.value ?: return
@@ -198,7 +206,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun newChat() {
-        if (agentState.value.busy) c.agent.stop()
         _current.value = null
     }
 
@@ -210,7 +217,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun delete(id: String) = viewModelScope.launch {
-        if (agentState.value.conversation == id && agentState.value.busy) c.agent.stop()
+        c.agent.stop(id)
         val conv = c.db.conversations().get(id)
         c.db.messages().deleteFor(id)
         c.db.conversations().delete(id)

@@ -135,6 +135,17 @@ class NeonContainer(val app: NeonApp) {
 
     init {
         scope.launch { db.messages().markDanglingStopped() }
+        scope.launch {
+            var was = 0
+            agent.states.collect { m ->
+                val n = m.values.count { it.busy }
+                if (n != was) {
+                    if (n == 0) com.qigai.neon.scheduled.HandsForegroundService.keepAlive(app, false)
+                    else com.qigai.neon.scheduled.HandsForegroundService.keepAlive(app, true, if (n > 1) "$n 个会话在进行" else "")
+                    was = n
+                }
+            }
+        }
         io.launch {
             runCatching { rootfs.ensureInitialized() }
             runCatching { skills.seedBundled() }

@@ -146,6 +146,9 @@ class ScreensSnapshotTest {
         }
     }
 
+    private val liveStep = msg("a2", "assistant", listOf(ContentBlock.ToolUse("t9", "sandbox_exec", "{\"command\":\"sed -i 's/a/b/' app.py\"}")), status = "streaming")
+    @Test fun v042FoldedDark() = darkShot("v042-chat-folded", content = @Composable { HomeFrame(com.qigai.neon.ui.home.HomeTab.CHAT) { Chat(listOf(ask, answer, results), folded = true) } })
+    @Test fun v042LiveDark() = darkShot("v042-chat-live", content = @Composable { HomeFrame(com.qigai.neon.ui.home.HomeTab.CHAT) { Chat(listOf(ask, liveStep), folded = true, busy = true) } })
     @Test fun v04ChatLight() = shot("v04-01-chat", content = home(com.qigai.neon.ui.home.HomeTab.CHAT))
     @Test fun v04ChatDark() = darkShot("v04-01-chat", content = home(com.qigai.neon.ui.home.HomeTab.CHAT))
     @Test fun v04GlanceLight() = shot("v04-02-glance", content = home(com.qigai.neon.ui.home.HomeTab.GLANCE))
@@ -210,13 +213,14 @@ class ScreensSnapshotTest {
         model: String? = "DeepSeek V4 Pro",
         title: String? = "账单与快递",
         skillList: List<PaletteSkill> = skills,
+        folded: Boolean = false,
     ) = ChatContent(
         title = title, modelLabel = model, messages = messages, busy = busy,
         input = input, onInput = {}, paletteOpen = palette, onPalette = {},
         deepThink = true, onDeepThink = {}, voice = voice,
         onMenu = {}, onNewChat = {}, onModel = {}, onConnectDeepSeek = {}, onConnectGo = {}, onRegenerate = {},
         onMic = {}, onVoiceCancel = {}, onVoiceConfirm = {}, onPlus = {}, onSend = {}, onStop = {},
-        skills = skillList, hands = true,
+        skills = skillList, hands = true, opsCollapsed = folded,
     )
 
     private val convs = listOf(

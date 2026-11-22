@@ -13,6 +13,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -332,29 +334,38 @@ fun AssistantMessage(
 }
 
 /** The folded summary of one turn's thinking and tool calls. */
-data class OpsFold(val steps: Int, val live: Boolean, val open: Boolean)
+data class OpsFold(val steps: Int, val live: Boolean, val open: Boolean, val thinkMs: Long = 0, val activity: String = "正在思考")
 
+/** One quiet capsule: what Neon is doing right now, or a short tally once done. Tap or long press shows the full chain. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun OpsFoldRow(f: OpsFold, onToggle: () -> Unit) {
     val c = Neon.colors
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val rot by animateFloatAsState(if (f.open) 0f else -90f, NeonMotion.thinking(), label = "fold")
+    val label = if (f.live) f.activity else buildList {
+        if (f.thinkMs >= 1000) add("思考 ${f.thinkMs / 1000} 秒")
+        if (f.steps > 0) add("执行 ${f.steps} 步")
+    }.joinToString("，").ifEmpty { "已思考" }
     Row(
-        Modifier.clip(NeonShapes.item).clickable(onClick = onToggle).padding(vertical = 6.dp, horizontal = 2.dp),
+        Modifier.clip(NeonShapes.capsule).border(1.dp, c.borderCard, NeonShapes.capsule)
+            .combinedClickable(
+                onClick = onToggle,
+                onLongClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onToggle() },
+            )
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .animateContentSize(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
-            if (f.live) BreathingDot() else Icon(Lucide.ListChecks, null, Modifier.size(17.dp), tint = c.inkSecondary)
-        }
-        Spacer(Modifier.width(10.dp))
-        val label = when {
-            f.live && f.steps > 0 -> "正在执行第 ${f.steps} 步"
-            f.live -> "思考中"
-            f.steps > 0 -> "已执行 ${f.steps} 步操作"
-            else -> "已深度思考"
+        if (f.live) {
+            BreathingDot()
+            Spacer(Modifier.width(8.dp))
         }
         Text(label, style = NeonType.tnum(NeonType.label().copy(color = c.inkSecondary)))
-        Spacer(Modifier.width(6.dp))
-        Icon(Lucide.ChevronUp, null, Modifier.size(16.dp).rotate(rot), tint = c.inkTertiary)
+        if (!f.live || f.open) {
+            Spacer(Modifier.width(6.dp))
+            Icon(Lucide.ChevronUp, if (f.open) "收起" else "展开", Modifier.size(15.dp).rotate(rot), tint = c.inkTertiary)
+        }
     }
 }
 

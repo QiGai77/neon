@@ -20,6 +20,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
@@ -65,8 +66,20 @@ class AgentRuntime(
     private val onTurnFinished: (conversationId: String) -> Unit,
 ) {
     private val _state = MutableStateFlow<AgentState>(AgentState.Idle)
+    /** The most recent state change of any conversation. */
     val state: StateFlow<AgentState> = _state.asStateFlow()
-    private var job: Job? = null
+    private val _states = MutableStateFlow<Map<String, AgentState>>(emptyMap())
+    /** Each conversation's own state; conversations run side by side. */
+    val states: StateFlow<Map<String, AgentState>> = _states.asStateFlow()
+    private val jobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
+
+    private fun set(s: AgentState) {
+        if (s.conversation != null && _states.value[s.conversation] == s) return
+        s.conversation?.let { id -> _states.update { it + (id to s) } }
+        _state.value = s
+    }
+
+    fun stateOf(cid: String?): AgentState = cid?.let { _states.value[it] } ?: AgentState.Idle
 
     companion object {
         const val MAX_STEPS = 12
@@ -109,13 +122,16 @@ class AgentRuntime(
         start(conversationId, cfg)
     }
 
-    fun stop() {
-        job?.cancel()
+    /** Stops one conversation, or every running one when [cid] is null. */
+    fun stop(cid: String? = null) {
+        if (cid == null) jobs.values.forEach { it.cancel() } else jobs[cid]?.cancel()
     }
 
     private fun start(cid: String, cfg: TurnConfig) {
-        job?.cancel()
-        job = scope.launch { loop(cid, cfg) }
+        jobs[cid]?.cancel()
+        val j = scope.launch { loop(cid, cfg) }
+        jobs[cid] = j
+        j.invokeOnCompletion { jobs.remove(cid, j) }
     }
 
     private suspend fun history(cid: String): List<ChatMessage> {
@@ -145,13 +161,13 @@ class AgentRuntime(
             val ok = runTools(cid)
             if (!ok) return
         }
-        _state.value = AgentState.Done(cid, "max_steps")
+        set(AgentState.Done(cid, "max_steps"))
     }
 
     /** One model request; streams into a Room message. Returns stop reason, or null when ended otherwise. */
     private suspend fun runStep(cid: String, cfg: TurnConfig, firstTurn: Boolean): String? {
         val started = System.currentTimeMillis()
-        _state.value = AgentState.Thinking(cid, started)
+        set(AgentState.Thinking(cid, started))
         val msgId = newId()
         val blocks = mutableListOf<ContentBlock>()
         var base = MessageEntity(
@@ -226,7 +242,7 @@ class AgentRuntime(
                         if (i >= 0) blocks[i] = (blocks[i] as ContentBlock.Thinking).copy(signature = ev.signature)
                     }
                     is StreamEvent.TextDelta -> {
-                        if (_state.value !is AgentState.Streaming) _state.value = AgentState.Streaming(cid)
+                        if (_states.value[cid] !is AgentState.Streaming) set(AgentState.Streaming(cid))
                         closeThinking()
                         val last = blocks.lastOrNull()
                         if (!closed && last is ContentBlock.Text) blocks[blocks.size - 1] = last.copy(text = last.text + ev.text)
@@ -251,7 +267,7 @@ class AgentRuntime(
             flush(true)
             db.conversations().touch(cid, System.currentTimeMillis())
             if (stopReason == "tool_use" && blocks.any { it is ContentBlock.ToolUse }) return "tool_use"
-            _state.value = AgentState.Done(cid, stopReason ?: "end_turn")
+            set(AgentState.Done(cid, stopReason ?: "end_turn"))
             onTurnFinished(cid)
             return stopReason
         } catch (e: CancellationException) {
@@ -260,7 +276,7 @@ class AgentRuntime(
                 base = base.copy(status = "stopped", stopReason = "user_stop")
                 flush(true)
                 if (blocks.isEmpty()) db.messages().delete(msgId)
-                _state.value = AgentState.Stopped(cid)
+                set(AgentState.Stopped(cid))
                 onTurnFinished(cid)
             }
             throw e
@@ -269,7 +285,7 @@ class AgentRuntime(
             val msg = (e as? ProviderException)?.message ?: (e.message ?: e.javaClass.simpleName)
             base = base.copy(status = "error", error = msg)
             flush(true)
-            _state.value = AgentState.Failed(cid, msg)
+            set(AgentState.Failed(cid, msg))
             return null
         }
     }
@@ -280,11 +296,11 @@ class AgentRuntime(
         val uses = BlocksJson.decode(last.blocks).filterIsInstance<ContentBlock.ToolUse>()
         val results = mutableListOf<ContentBlock>()
         for (u in uses) {
-            _state.value = AgentState.CallingTool(cid, u.name)
+            set(AgentState.CallingTool(cid, u.name))
             val watch = scope.launch {
                 while (true) {
                     kotlinx.coroutines.delay(150)
-                    _state.value = if (guardPending()) AgentState.WaitingGuard(cid, u.name) else AgentState.CallingTool(cid, u.name)
+                    set(if (guardPending()) AgentState.WaitingGuard(cid, u.name) else AgentState.CallingTool(cid, u.name))
                 }
             }
             val outcome = try { tools.execute(cid, u.name, u.inputJson) } finally { watch.cancel() }

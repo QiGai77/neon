@@ -109,6 +109,7 @@ fun SiderDrawer(
     val tasksN by vm.c.db.scheduledTaskDao().observeAll().collectAsState(initial = emptyList())
     val convs by vm.conversations.collectAsState()
     val current by vm.currentId.collectAsState()
+    val running by vm.runningIds.collectAsState()
     val s by vm.settings.collectAsState()
     val q by vm.quota.collectAsState()
     val busy by vm.driveBusy.collectAsState()
@@ -120,6 +121,7 @@ fun SiderDrawer(
         drive = DriveUi(s.driveConnected, s.driveEmail, busy, s.driveError, s.driveLastSync, vm.driveFolders()),
         conversations = convs,
         currentId = current,
+        running = running,
         onOpenSettings = onOpenSettings,
         onRefreshQuota = { vm.refreshQuota() },
         onConnectGo = onConnectGo,
@@ -182,6 +184,7 @@ fun SiderContent(
     drive: DriveUi,
     conversations: List<ConversationEntity>,
     currentId: String?,
+    running: Set<String> = emptySet(),
     onOpenSettings: () -> Unit,
     onRefreshQuota: () -> Unit,
     onConnectGo: () -> Unit,
@@ -253,7 +256,7 @@ fun SiderContent(
             } else item(key = "convList") {
                 NeonCard(padding = PaddingValues(vertical = 6.dp)) {
                     conversations.forEachIndexed { i, conv ->
-                        ConversationRow(conv, conv.id == currentId, onOpenConversation, onRename, onDelete)
+                        ConversationRow(conv, conv.id == currentId, conv.id in running, onOpenConversation, onRename, onDelete)
                         if (i < conversations.lastIndex) Box(Modifier.padding(start = 16.dp).fillMaxWidth().height(1.dp).background(c.borderCard))
                     }
                 }
@@ -278,6 +281,7 @@ fun SiderContent(
 private fun ConversationRow(
     conv: ConversationEntity,
     selected: Boolean,
+    running: Boolean,
     onOpen: (String) -> Unit,
     onRename: (ConversationEntity) -> Unit,
     onDelete: (ConversationEntity) -> Unit,
@@ -288,12 +292,12 @@ private fun ConversationRow(
         Modifier.fillMaxWidth().clickable { onOpen(conv.id) }.padding(start = 16.dp, top = 9.dp, bottom = 9.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(6.dp).clip(NeonShapes.capsule).background(if (selected) c.accent else c.bgSurface.copy(alpha = 0f)))
+        Box(Modifier.size(6.dp).clip(NeonShapes.capsule).background(if (running) c.live else if (selected) c.accent else c.bgSurface.copy(alpha = 0f)))
         Spacer(Modifier.width(if (selected) 10.dp else 10.dp))
         Column(Modifier.weight(1f)) {
             Text(conv.title, style = NeonType.item().copy(color = if (selected) c.inkPrimary else c.inkPrimary), maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(relTime(conv.updatedAt), style = NeonType.tnum(NeonType.overline()))
+                Text(if (running) "进行中" else relTime(conv.updatedAt), style = NeonType.tnum(NeonType.overline()).let { if (running) it.copy(color = c.live) else it })
                 if (conv.driveSyncedAt != null) {
                     Spacer(Modifier.width(6.dp))
                     Icon(Lucide.Cloud, "已同步", Modifier.size(12.dp), tint = c.inkTertiary)

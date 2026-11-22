@@ -26,7 +26,7 @@ data class AppSettings(
     val driveError: String? get() = raw[SettingsRepository.DRIVE_ERROR]
     val handsEnabled: Boolean get() = raw[SettingsRepository.HANDS] == "1"
     /** Chat shows each turn's thinking and tool calls as one folded line. */
-    val opsCollapsed: Boolean get() = raw[SettingsRepository.OPS_COLLAPSED] == "1"
+    val opsCollapsed: Boolean get() = raw[SettingsRepository.OPS_COLLAPSED] != "0"
     val workspaceConnected: Boolean get() = raw[SettingsRepository.WORKSPACE] == "1"
     /** Ordered drawer cards the user kept; null = default set. */
     val interests: List<String> get() = raw[SettingsRepository.INTERESTS]?.split(',')?.map { it.trim() }?.filter { it.isNotBlank() } ?: SettingsRepository.DEFAULT_INTERESTS

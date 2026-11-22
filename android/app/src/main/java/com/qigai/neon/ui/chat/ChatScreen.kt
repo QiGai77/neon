@@ -260,7 +260,7 @@ fun ChatContent(
                                 m, isLast = m.id == messages.lastOrNull()?.id, busy = busy, toolResults = results, onRegenerate = onRegenerate,
                                 showOps = !folded,
                                 ops = if (opsCollapsed && t != null && t.head == m.id && (t.steps > 0 || t.thought))
-                                    OpsFold(t.steps, live = busy && t.last == messages.lastOrNull()?.id, open = !folded) else null,
+                                    OpsFold(t.steps, live = busy && t.last == messages.lastOrNull()?.id, open = !folded, thinkMs = t.thinkMs, activity = t.activity) else null,
                                 onOps = { t?.head?.let { h -> if (h in openTurns) openTurns.remove(h) else openTurns.add(h) } },
                             )
                         }
@@ -326,7 +326,43 @@ private fun ChatTopBar(
 }
 
 /** A user turn's tool work: the first assistant message carries the folded line. */
-private data class OpTurn(val head: String, val last: String, val steps: Int, val thought: Boolean)
+private data class OpTurn(
+    val head: String, val last: String, val steps: Int, val thought: Boolean,
+    val thinkMs: Long = 0, val activity: String = "正在思考",
+)
+
+/** What a tool call is doing, in plain words, for the one-line status. */
+private fun activityOf(name: String, inputJson: String): String {
+    val cmd = runCatching {
+        (com.qigai.neon.provider.Http.json.parseToJsonElement(inputJson) as? kotlinx.serialization.json.JsonObject)
+            ?.get("command")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+    }.getOrNull().orEmpty().trim()
+    return when {
+        name == "sandbox_exec" -> {
+            val c = cmd.lowercase()
+            when {
+                Regex("""\b(apk add|pip3? install|uv (pip|add|sync)|npm (i|install)|pnpm (i|install|add)|cargo add)\b""").containsMatchIn(c) -> "正在安装依赖"
+                Regex("""\bgit (clone|pull|fetch)\b""").containsMatchIn(c) -> "正在拉取代码"
+                Regex("""(cat\s*>|tee |sed -i|>>|apply_patch|patch )""").containsMatchIn(c) -> "正在修改代码文件"
+                Regex("""\b(make|cmake|gcc|cargo build|npm run build|pnpm build|gradle)\b""").containsMatchIn(c) -> "正在编译"
+                Regex("""\b(pytest|npm test|pnpm test|cargo test)\b""").containsMatchIn(c) -> "正在跑测试"
+                Regex("""^(cat|head|tail|less|rg|grep|ls|find|tree|wc)\b""").containsMatchIn(c) -> "正在查看文件"
+                Regex("""\b(curl|wget)\b""").containsMatchIn(c) -> "正在下载"
+                Regex("""\b(python3?|node|uv run)\b""").containsMatchIn(c) -> "正在运行脚本"
+                else -> "正在运行命令"
+            }
+        }
+        name.startsWith("gmail_send") -> "正在发邮件"
+        name.startsWith("gmail") -> "正在查邮件"
+        name.startsWith("calendar") -> "正在看日程"
+        name.startsWith("drive") -> "正在处理 Drive 文件"
+        name.startsWith("hands") -> "正在操作手机"
+        name.startsWith("phone") -> "正在读手机信息"
+        name.contains("search", true) -> "正在搜索"
+        name.contains("fetch", true) || name.contains("browse", true) -> "正在读网页"
+        else -> "正在调用工具"
+    }
+}
 
 private class OpTurns(
     val byMessage: Map<String, OpTurn>,
@@ -341,14 +377,21 @@ private fun opTurns(messages: List<MessageEntity>): OpTurns {
     var group = mutableListOf<MessageEntity>()
     fun flush() {
         if (group.isEmpty()) return
-        var steps = 0; var thought = false
+        var steps = 0; var thought = false; var thinkMs = 0L
+        var activity = "正在思考"
         group.forEach { m ->
             val blocks = BlocksJson.decode(m.blocks)
             steps += blocks.count { it is ContentBlock.ToolUse || it is ContentBlock.ServerToolUse }
-            if (blocks.any { it is ContentBlock.Thinking }) thought = true
+            blocks.filterIsInstance<ContentBlock.Thinking>().forEach { thought = true; thinkMs += it.durationMs ?: 0 }
             if (blocks.any { it is ContentBlock.Text && it.text.isNotBlank() }) text += m.id
+            activity = when (val b = blocks.lastOrNull()) {
+                is ContentBlock.ToolUse -> activityOf(b.name, b.inputJson)
+                is ContentBlock.ServerToolUse -> activityOf(b.name, b.inputJson)
+                is ContentBlock.Text -> "正在整理回答"
+                else -> "正在思考"
+            }
         }
-        val t = OpTurn(group.first().id, group.last().id, steps, thought)
+        val t = OpTurn(group.first().id, group.last().id, steps, thought, thinkMs, activity)
         group.forEach { by[it.id] = t }
         group = mutableListOf()
     }

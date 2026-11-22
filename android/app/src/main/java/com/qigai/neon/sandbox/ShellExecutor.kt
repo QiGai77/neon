@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -41,7 +42,7 @@ class ShellExecutor(
     val latestLine: SharedFlow<TerminalLine> = _latestLine.asSharedFlow()
 
     fun appendLine(line: TerminalLine) {
-        _lines.value = (_lines.value + line).takeLast(400)
+        _lines.update { (it + line).takeLast(400) }
         _latestLine.tryEmit(line)
     }
 
@@ -84,8 +85,11 @@ class ShellExecutor(
         return withContext(Dispatchers.IO) {
             runCatching {
                 val pb = ProcessBuilder(kernel.buildCommand(command)).redirectErrorStream(true)
+                    // nothing can type into the sandbox, so a prompt would hang until the timeout
+                    .redirectInput(ProcessBuilder.Redirect.from(java.io.File("/dev/null")))
                 pb.environment().remove("LD_PRELOAD")
                 pb.environment().putAll(kernel.buildEnv())
+                pb.environment().putAll(NON_INTERACTIVE)
                 val proc = pb.start()
                 val outBuf = StringBuilder()
                 val reader = Thread {
@@ -100,21 +104,39 @@ class ShellExecutor(
                         }
                     }
                 }.apply { isDaemon = true; start() }
-                val finished = proc.waitFor(timeoutSec, TimeUnit.SECONDS)
-                if (!finished) {
-                    proc.destroyForcibly()
-                    reader.join(500)
-                    appendLine(TerminalLine("命令超时 ${timeoutSec}s", isError = true))
-                    ShellResult(-3, synchronized(outBuf) { outBuf.toString() } + "\n[TIMEOUT]")
-                } else {
-                    reader.join(2000)
-                    ShellResult(proc.exitValue(), synchronized(outBuf) { outBuf.toString() }.trim())
+                try {
+                    val deadline = System.currentTimeMillis() + timeoutSec * 1000
+                    while (proc.isAlive && System.currentTimeMillis() < deadline) kotlinx.coroutines.delay(100)
+                    if (proc.isAlive) {
+                        proc.destroyForcibly()
+                        reader.join(500)
+                        appendLine(TerminalLine("命令超时 ${timeoutSec}s", isError = true))
+                        ShellResult(-3, synchronized(outBuf) { outBuf.toString() } + "\n[TIMEOUT]")
+                    } else {
+                        reader.join(2000)
+                        ShellResult(proc.exitValue(), synchronized(outBuf) { outBuf.toString() }.trim())
+                    }
+                } finally {
+                    // stop pressed or the turn was cancelled: do not leave the process running
+                    if (proc.isAlive) proc.destroyForcibly()
                 }
             }.getOrElse { err ->
+                if (err is kotlinx.coroutines.CancellationException) {
+                    appendLine(TerminalLine("已停止", isError = true))
+                    throw err
+                }
                 val msg = err.message ?: "PRoot 启动失败"
                 appendLine(TerminalLine("✕ $msg", isError = true))
                 ShellResult(-4, msg)
             }
         }
+    }
+
+    companion object {
+        val NON_INTERACTIVE = mapOf(
+            "CI" to "1", "DEBIAN_FRONTEND" to "noninteractive", "GIT_TERMINAL_PROMPT" to "0",
+            "PIP_NO_INPUT" to "1", "NPM_CONFIG_YES" to "true", "PAGER" to "cat", "GIT_PAGER" to "cat",
+            "PYTHONUNBUFFERED" to "1",
+        )
     }
 }

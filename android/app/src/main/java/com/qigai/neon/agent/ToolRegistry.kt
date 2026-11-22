@@ -104,7 +104,9 @@ class ToolRegistry(
 
     suspend fun execute(sessionId: String, toolName: String, inputJson: String): ToolOutcome {
         val out = runCatching { executeRaw(sessionId, toolName, inputJson) }.getOrElse { "ERROR: ${it.message ?: it.javaClass.simpleName}" }
-        return ToolOutcome(out.take(MAX_RESULT), isError = out.startsWith("ERROR") || out.startsWith("DENIED"))
+        val clipped = if (out.length <= MAX_RESULT) out
+            else out.take(6_000) + "\n…中间省略 ${out.length - MAX_RESULT} 字…\n" + out.takeLast(MAX_RESULT - 6_000)
+        return ToolOutcome(clipped, isError = out.startsWith("ERROR") || out.startsWith("DENIED"))
     }
 
     private suspend fun executeRaw(sessionId: String, toolName: String, inputJson: String): String {
