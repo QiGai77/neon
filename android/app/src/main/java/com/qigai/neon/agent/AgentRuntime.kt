@@ -71,7 +71,8 @@ class AgentRuntime(
     companion object {
         const val MAX_STEPS = 12
         const val SYSTEM = "你是 Neon，运行在用户 Android 手机上的助手。用用户的语言回答，使用 Markdown。" +
-            "可以调用工具：离线 Alpine 沙箱（/workspace）、Gmail、日历、Drive、手机剪贴板与通知、Hands 操作手机、MCP。" +
+            "可以调用工具：Alpine Linux 沙箱（/workspace），Gmail，日历，Drive，手机剪贴板和通知，Hands 操作手机，以及已连接的 MCP 连接器。" +
+            "沙箱自带 Python 3 和 uv，Node.js 和 pnpm，Git，gcc 和 cmake，以及 ripgrep jq sqlite 等常用工具，缺的软件用 apk add 安装。" +
             "需要时直接调用工具，不要编造结果；高危操作会由 Sentinel 请用户确认。"
         fun newId() = UUID.randomUUID().toString()
     }
@@ -196,7 +197,12 @@ class AgentRuntime(
         val system = buildString {
             append(SYSTEM)
             memory.formatForPrompt().takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
-            skills.matchByPrompt(lastUserText)?.let { sk -> append("\n\n【命中技能 ").append(sk.name).append("】\n").append(sk.body) }
+            skills.catalogForPrompt().takeIf { it.isNotBlank() }?.let { append("\n\n").append(it) }
+            skills.matchByPrompt(lastUserText)?.let { sk ->
+                append("\n\n【命中技能 ").append(sk.name).append("】")
+                if (sk.dir != null) append("技能目录 /workspace/skills/").append(sk.dir).append("\n")
+                append(sk.body)
+            }
         }
         val req = ChatRequest(
             model = cfg.model, system = system, messages = history(cid).let { h ->

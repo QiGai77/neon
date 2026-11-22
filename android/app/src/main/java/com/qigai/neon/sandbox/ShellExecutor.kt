@@ -88,21 +88,27 @@ class ShellExecutor(
                 pb.environment().putAll(kernel.buildEnv())
                 val proc = pb.start()
                 val outBuf = StringBuilder()
-                BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
-                    var line = reader.readLine()
-                    while (line != null) {
-                        outBuf.appendLine(line)
-                        appendLine(TerminalLine(line))
-                        line = reader.readLine()
+                val reader = Thread {
+                    runCatching {
+                        BufferedReader(InputStreamReader(proc.inputStream)).use { r ->
+                            var line = r.readLine()
+                            while (line != null) {
+                                synchronized(outBuf) { outBuf.appendLine(line) }
+                                appendLine(TerminalLine(line))
+                                line = r.readLine()
+                            }
+                        }
                     }
-                }
+                }.apply { isDaemon = true; start() }
                 val finished = proc.waitFor(timeoutSec, TimeUnit.SECONDS)
                 if (!finished) {
                     proc.destroyForcibly()
+                    reader.join(500)
                     appendLine(TerminalLine("命令超时 ${timeoutSec}s", isError = true))
-                    ShellResult(-3, outBuf.toString() + "\n[TIMEOUT]")
+                    ShellResult(-3, synchronized(outBuf) { outBuf.toString() } + "\n[TIMEOUT]")
                 } else {
-                    ShellResult(proc.exitValue(), outBuf.toString().trim())
+                    reader.join(2000)
+                    ShellResult(proc.exitValue(), synchronized(outBuf) { outBuf.toString() }.trim())
                 }
             }.getOrElse { err ->
                 val msg = err.message ?: "PRoot 启动失败"

@@ -29,81 +29,93 @@ class McpOAuth(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
+    /**
+     * Authorization code + PKCE through a Custom Tab, redirecting to a loopback port.
+     * [client] receives the exact redirect URI so dynamic registration can register it.
+     */
     suspend fun runPkceFlow(
         authEndpoint: String,
         tokenEndpoint: String,
-        clientId: String,
         scopes: List<String>,
-        extraAuthParams: Map<String, String> = emptyMap(),
-    ): Result<OAuthTokenResponse> = runCatching {
+        resource: String?,
+        client: suspend (redirectUri: String) -> com.qigai.neon.connectors.OAuthClient?,
+    ): Result<Pair<OAuthTokenResponse, com.qigai.neon.connectors.OAuthClient>> = runCatching {
         val verifier = generateCodeVerifier()
         val challenge = generateCodeChallenge(verifier)
         val state = generateCodeVerifier().take(24)
         val (socket, redirectUri) = LoopbackCallback.createLoopbackServer()
+        val oc = try { client(redirectUri) } catch (e: Exception) { socket.close(); throw e }
+            ?: run { socket.close(); error("该服务不支持自动注册客户端，请改用令牌连接") }
 
         val uriBuilder = Uri.parse(authEndpoint).buildUpon()
-            .appendQueryParameter("client_id", clientId)
+            .appendQueryParameter("client_id", oc.clientId)
             .appendQueryParameter("redirect_uri", redirectUri)
             .appendQueryParameter("response_type", "code")
-            .appendQueryParameter("scope", scopes.joinToString(" "))
             .appendQueryParameter("code_challenge", challenge)
             .appendQueryParameter("code_challenge_method", "S256")
             .appendQueryParameter("state", state)
-        extraAuthParams.forEach { (k, v) -> uriBuilder.appendQueryParameter(k, v) }
+        if (scopes.isNotEmpty()) uriBuilder.appendQueryParameter("scope", scopes.joinToString(" "))
+        if (!resource.isNullOrBlank()) uriBuilder.appendQueryParameter("resource", resource)
 
         val customTabs = CustomTabsIntent.Builder().setShowTitle(true).build()
         customTabs.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         customTabs.launchUrl(context, uriBuilder.build())
 
         val callback = LoopbackCallback.awaitCallback(socket)
-        if (!callback.error.isNullOrBlank()) {
-            error("OAuth 授权失败: ${callback.error}")
-        }
-        if (callback.state != state || callback.code.isNullOrBlank()) {
-            error("OAuth 状态校验失败或未返回授权码")
-        }
-        exchangeCode(tokenEndpoint, clientId, callback.code, redirectUri, verifier)
+        if (!callback.error.isNullOrBlank()) error("授权被拒绝：${callback.error}")
+        if (callback.state != state || callback.code.isNullOrBlank()) error("授权回调校验失败")
+        exchangeCode(tokenEndpoint, oc, callback.code, redirectUri, verifier, resource) to oc
     }
 
     private suspend fun exchangeCode(
         tokenEndpoint: String,
-        clientId: String,
+        client: com.qigai.neon.connectors.OAuthClient,
         code: String,
         redirectUri: String,
         verifier: String,
+        resource: String?,
     ): OAuthTokenResponse = withContext(Dispatchers.IO) {
         val body = FormBody.Builder()
             .add("grant_type", "authorization_code")
-            .add("client_id", clientId)
+            .add("client_id", client.clientId)
             .add("code", code)
             .add("redirect_uri", redirectUri)
             .add("code_verifier", verifier)
-            .build()
-        val req = Request.Builder().url(tokenEndpoint).post(body).build()
+        client.clientSecret?.let { body.add("client_secret", it) }
+        if (!resource.isNullOrBlank()) body.add("resource", resource)
+        val req = Request.Builder().url(tokenEndpoint).header("Accept", "application/json").post(body.build()).build()
         httpClient.newCall(req).execute().use { resp ->
             val raw = resp.body?.string().orEmpty()
-            if (!resp.isSuccessful) error("Token 换取失败 (${resp.code}): $raw")
-            val obj = json.parseToJsonElement(raw).jsonObject
-            OAuthTokenResponse(
-                accessToken = obj["access_token"]?.jsonPrimitive?.content ?: error("缺少 access_token"),
-                refreshToken = obj["refresh_token"]?.jsonPrimitive?.content,
-                expiresInSec = obj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L,
-            )
+            if (!resp.isSuccessful) error("令牌换取失败 (${resp.code})：${raw.take(200)}")
+            parseToken(raw)
         }
+    }
+
+    private fun parseToken(raw: String): OAuthTokenResponse {
+        val obj = json.parseToJsonElement(raw).jsonObject
+        return OAuthTokenResponse(
+            accessToken = obj["access_token"]?.jsonPrimitive?.content ?: error("缺少 access_token"),
+            refreshToken = obj["refresh_token"]?.jsonPrimitive?.content,
+            expiresInSec = obj["expires_in"]?.jsonPrimitive?.content?.toLongOrNull() ?: 3600L,
+        )
     }
 
     suspend fun refreshToken(
         tokenEndpoint: String,
         clientId: String,
         refreshToken: String,
+        clientSecret: String? = null,
+        resource: String? = null,
     ): Result<OAuthTokenResponse> = withContext(Dispatchers.IO) {
         runCatching {
-            val body = FormBody.Builder()
+            val b = FormBody.Builder()
                 .add("grant_type", "refresh_token")
                 .add("client_id", clientId)
                 .add("refresh_token", refreshToken)
-                .build()
-            val req = Request.Builder().url(tokenEndpoint).post(body).build()
+            clientSecret?.let { b.add("client_secret", it) }
+            if (!resource.isNullOrBlank()) b.add("resource", resource)
+            val body = b.build()
+            val req = Request.Builder().url(tokenEndpoint).header("Accept", "application/json").post(body).build()
             httpClient.newCall(req).execute().use { resp ->
                 val raw = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) error("Token 刷新失败 (${resp.code}): $raw")

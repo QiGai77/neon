@@ -7,17 +7,19 @@ Usage:
 """
 import argparse
 import json
+import tempfile
 import shlex
 import subprocess
 import sys
 
 
 def rpc_exchange(cmd: str, method: str, params: dict) -> dict:
+    errf = tempfile.TemporaryFile(mode="w+")
     proc = subprocess.Popen(
         shlex.split(cmd),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=errf,
         text=True,
     )
     assert proc.stdin and proc.stdout
@@ -26,15 +28,24 @@ def rpc_exchange(cmd: str, method: str, params: dict) -> dict:
         proc.stdin.write(json.dumps(obj) + "\n")
         proc.stdin.flush()
 
-    def recv() -> dict:
+    def recv(want_id: int) -> dict:
         while True:
             line = proc.stdout.readline()
             if not line:
-                err = proc.stderr.read() if proc.stderr else ""
+                errf.seek(0)
+                err = errf.read()[-2000:]
                 raise RuntimeError(f"stdio MCP EOF: {err.strip()}")
             line = line.strip()
-            if line.startswith("{"):
-                return json.loads(line)
+            if not line.startswith("{"):
+                continue
+            try:
+                msg = json.loads(line)
+            except ValueError:
+                continue
+            if msg.get("id") == want_id and ("result" in msg or "error" in msg):
+                return msg
+            if "method" in msg and "id" in msg:
+                send({"jsonrpc": "2.0", "id": msg["id"], "result": {}})
 
     try:
         send({
@@ -47,16 +58,17 @@ def rpc_exchange(cmd: str, method: str, params: dict) -> dict:
                 "clientInfo": {"name": "neon-mcp-cli", "version": "0.3.0"},
             },
         })
-        _ = recv()
+        _ = recv(1)
         send({"jsonrpc": "2.0", "method": "notifications/initialized"})
         send({"jsonrpc": "2.0", "id": 2, "method": method, "params": params})
-        return recv()
+        return recv(2)
     finally:
         proc.terminate()
         try:
             proc.wait(timeout=2)
         except subprocess.TimeoutExpired:
             proc.kill()
+        errf.close()
 
 
 def main():

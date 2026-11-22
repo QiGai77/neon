@@ -35,6 +35,7 @@ class ToolRegistry(
     private val mcpClient: McpClient,
     private val localStdioMcp: LocalStdioMcpBridge,
     private val connectorDao: ConnectorDao,
+    private val mcpHub: com.qigai.neon.connectors.McpHub,
     private val tokenStore: EncryptedTokenStore,
     private val riskGate: RiskGate,
 ) {
@@ -59,7 +60,7 @@ class ToolRegistry(
     /** [hands] false hides the phone-control tools for this turn. */
     suspend fun specs(hands: Boolean = true): List<ToolSpec> {
         val base = mutableListOf<ToolSpec>(
-            ToolSpec("sandbox_exec", "在离线 Alpine Linux 沙箱 (/workspace) 中执行命令或 Python 脚本", objSchema("command" to "要执行的 bash/sh 命令", required = listOf("command"))),
+            ToolSpec("sandbox_exec", "在 Alpine Linux 沙箱 (/workspace) 中执行 bash 命令。可用 python3 uv node npm pnpm git gcc make cmake rg jq sqlite3，可 apk add 安装其他软件", objSchema("command" to "要执行的 bash 命令", "timeout_sec" to "超时秒数，默认 120，安装依赖或编译时可设到 900", required = listOf("command"))),
             ToolSpec("hands_dump_screen", "获取当前手机屏幕的无障碍控件树（含编号与坐标）", objSchema()),
             ToolSpec("hands_screenshot", "截取当前屏幕并叠加 Set-of-Mark 编号框", objSchema()),
             ToolSpec("hands_tap", "点击屏幕上的指定编号控件", objSchema("node_index" to "控件编号整数", required = listOf("node_index"))),
@@ -84,14 +85,15 @@ class ToolRegistry(
             .filter { (it.category == "remote_mcp" || it.category == "local_stdio") && it.status == "connected" }
             .forEach { conn ->
                 runCatching {
-                    val prefix = if (conn.category == "local_stdio") "localmcp" else "mcp"
                     val arr = json.parseToJsonElement(conn.toolsJson).jsonArray
                     arr.forEach { el ->
                         val obj = el.jsonObject
                         val name = obj["name"]?.jsonPrimitive?.content ?: return@forEach
                         val desc = obj["description"]?.jsonPrimitive?.content.orEmpty()
                         val schema = obj["inputSchema"]?.jsonObject ?: JsonObject(emptyMap())
-                        base += ToolSpec("${prefix}_${conn.id}_$name", desc, schema)
+                        val alias = mcpAlias(conn.id, name)
+                        mcpAliases[alias] = conn.id to name
+                        base += ToolSpec(alias, "[${conn.name}] ${desc.take(900)}", schema)
                     }
                 }
             }
@@ -127,7 +129,8 @@ class ToolRegistry(
         return when (toolName) {
             "sandbox_exec" -> {
                 val cmd = args["command"]?.jsonPrimitive?.content.orEmpty()
-                val res = shellExecutor.execute(cmd)
+                val timeout = (args["timeout_sec"]?.jsonPrimitive?.content?.toLongOrNull() ?: 120L).coerceIn(10L, 1800L)
+                val res = shellExecutor.execute(cmd, timeout)
                 "exit=${res.exitCode}\n${res.output}"
             }
             "hands_dump_screen" -> handsOperator.dumpScreen()
@@ -190,30 +193,26 @@ class ToolRegistry(
                 )
             }
             else -> {
-                if (toolName.startsWith("localmcp_")) {
-                    val rest = toolName.removePrefix("localmcp_")
-                    val connId = rest.substringBefore("_")
-                    val remoteTool = rest.substringAfter("_")
-                    val conn = connectorDao.getById(connId) ?: return "ERROR: 未找到本地 stdio MCP $connId"
-                    localStdioMcp.callTool(conn.endpointUrl.orEmpty(), remoteTool, args).fold(
-                        onSuccess = { it },
-                        onFailure = { "ERROR: ${it.message}" },
-                    )
-                } else if (toolName.startsWith("mcp_")) {
-                    val rest = toolName.removePrefix("mcp_")
-                    val connId = rest.substringBefore("_")
-                    val remoteTool = rest.substringAfter("_")
-                    val conn = connectorDao.getById(connId) ?: return "ERROR: 未找到 MCP 连接器 $connId"
-                    val token = tokenStore.getConnectorToken(connId)
-                    mcpClient.callTool(conn.endpointUrl.orEmpty(), token, remoteTool, args).fold(
-                        onSuccess = { it },
-                        onFailure = { "ERROR: ${it.message}" },
-                    )
-                } else {
-                    "ERROR: 未知工具 $toolName"
-                }
+                val target = mcpAliases[toolName] ?: if (toolName.startsWith("mcp_") || toolName.startsWith("localmcp_")) {
+                    val rest = toolName.substringAfter("_")
+                    rest.substringBefore("_") to rest.substringAfter("_")
+                } else null
+                if (target == null) "ERROR: 未知工具 $toolName"
+                else mcpHub.call(target.first, target.second, args).fold(
+                    onSuccess = { it },
+                    onFailure = { "ERROR: ${it.message}" },
+                )
             }
         }
+    }
+
+    private val mcpAliases = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
+
+    /** Function names must match ^[a-zA-Z0-9_-]{1,64}$ for every provider. */
+    private fun mcpAlias(connId: String, tool: String): String {
+        val clean = tool.map { if (it.isLetterOrDigit() && it.code < 128 || it == '_' || it == '-') it else '_' }.joinToString("")
+        val full = "mcp_${connId}_$clean"
+        return if (full.length <= 64) full else full.take(55) + "_" + Integer.toHexString(full.hashCode()).take(8)
     }
 
     companion object { const val MAX_RESULT = 24_000 }

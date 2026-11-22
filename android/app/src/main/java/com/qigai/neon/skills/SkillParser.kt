@@ -9,10 +9,17 @@ data class SkillDocument(
     val risk: String,
     val body: String,
     val fileName: String,
-)
+    /** Folder under /workspace/skills for skills that ship with scripts or references; null for a single file. */
+    val dir: String? = null,
+    /** owner/repo the skill came from, when installed from the market. */
+    val source: String? = null,
+) {
+    /** Path of the SKILL.md inside the sandbox. */
+    val sandboxPath: String get() = if (dir != null) "/workspace/skills/$dir/SKILL.md" else "/workspace/skills/$fileName"
+}
 
 object SkillParser {
-    fun parse(fileName: String, rawMarkdown: String): SkillDocument? {
+    fun parse(fileName: String, rawMarkdown: String, dir: String? = null, source: String? = null): SkillDocument? {
         val trimmed = rawMarkdown.trim()
         if (!trimmed.startsWith("---")) return null
         val endIdx = trimmed.indexOf("\n---", startIndex = 3)
@@ -22,16 +29,31 @@ object SkillParser {
         val body = trimmed.substring(endIdx + 4).trim()
 
         val meta = mutableMapOf<String, String>()
+        var blockKey: String? = null
+        val block = StringBuilder()
+        fun closeBlock() {
+            blockKey?.let { meta[it] = block.toString().trim() }
+            blockKey = null; block.clear()
+        }
         frontmatter.lines().forEach { line ->
+            val indented = line.startsWith(" ") || line.startsWith("\t")
+            if (blockKey != null && (indented || line.isBlank())) {
+                if (block.isNotEmpty()) block.append(' ')
+                block.append(line.trim())
+                return@forEach
+            }
+            closeBlock()
             val colon = line.indexOf(':')
-            if (colon > 0) {
+            if (colon > 0 && !indented) {
                 val key = line.substring(0, colon).trim().lowercase()
-                val value = line.substring(colon + 1).trim().removeSurrounding("\"").removeSurrounding("'")
-                meta[key] = value
+                val value = line.substring(colon + 1).trim()
+                if (value == ">" || value == "|" || value == ">-" || value == "|-" || value.isEmpty()) blockKey = key
+                else meta[key] = value.removeSurrounding("\"").removeSurrounding("'")
             }
         }
+        closeBlock()
 
-        val name = meta["name"]?.takeIf { it.isNotBlank() } ?: fileName.removeSuffix(".md")
+        val name = meta["name"]?.takeIf { it.isNotBlank() } ?: fileName.removeSuffix(".md").removeSuffix(".SKILL")
         val command = meta["command"]?.takeIf { it.isNotBlank() }
             ?: "/${name.lowercase().replace(' ', '_')}"
         val desc = meta["description"].orEmpty()
@@ -53,6 +75,8 @@ object SkillParser {
             risk = risk,
             body = body,
             fileName = fileName,
+            dir = dir,
+            source = source,
         )
     }
 }

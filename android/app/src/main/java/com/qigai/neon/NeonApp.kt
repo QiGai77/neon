@@ -73,6 +73,8 @@ class NeonContainer(val app: NeonApp) {
     val mcpDiscovery = McpAuthDiscovery(Http.client)
     val mcp = McpClient(Http.client)
     val mcpOAuth = com.qigai.neon.oauth.McpOAuth(app, Http.client)
+    val mcpHub = com.qigai.neon.connectors.McpHub(db.connectorDao(), tokens, mcp, mcpDiscovery, mcpOAuth, localMcp)
+    val mcpMarket = com.qigai.neon.connectors.McpRegistry(Http.client)
     val device = NativeDeviceTools(app)
     val webhook = WebhookConnector(Http.client, tokens)
     val google = GoogleWorkspaceConnector(
@@ -82,7 +84,8 @@ class NeonContainer(val app: NeonApp) {
     )
     val shizuku = ShizukuAdbEngine()
     val hands = HandsOperator(app, shizuku, riskGate, db.handsTraceDao())
-    val skills = SkillRepository(rootfs, google)
+    val skills = SkillRepository(rootfs, google, app)
+    val skillMarket = com.qigai.neon.skills.SkillMarket(Http.client, skills) { tokens.getConnectorToken("github") }
     val memory = MemoryManager(rootfs, google)
     val tasks = TaskScheduler(app, db.scheduledTaskDao())
     val skillSynth = SkillSynthesizer(complete = { prompt -> completeOnce(prompt) }, skillRepository = skills)
@@ -90,7 +93,7 @@ class NeonContainer(val app: NeonApp) {
     val tools = ToolRegistry(
         shellExecutor = shell, handsOperator = hands, googleWorkspace = google, nativeDevice = device,
         webhookConnector = webhook, mcpClient = mcp, localStdioMcp = localMcp,
-        connectorDao = db.connectorDao(), tokenStore = tokens, riskGate = riskGate,
+        connectorDao = db.connectorDao(), mcpHub = mcpHub, tokenStore = tokens, riskGate = riskGate,
     )
     val agent = AgentRuntime(
         db, tools, scope, skills, memory,
@@ -127,6 +130,7 @@ class NeonContainer(val app: NeonApp) {
         scope.launch { db.messages().markDanglingStopped() }
         io.launch {
             runCatching { rootfs.ensureInitialized() }
+            runCatching { skills.seedBundled() }
             runCatching { skills.reloadFromDisk() }
             runCatching { memory.load() }
         }

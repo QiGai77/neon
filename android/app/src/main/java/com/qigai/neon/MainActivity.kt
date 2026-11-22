@@ -82,9 +82,11 @@ fun NeonRoot(vm: MainViewModel) {
         ) {
             composable("chat") { ChatScreen(vm, openSheet = { sheet = it }, onOpenSettings = { nav.navigate("settings") }, onNavigate = { nav.navigate(it) }) }
             composable("settings") { SettingsScreen(vm, openSheet = { sheet = it }, onBack = { nav.popBackStack() }) }
-            composable("connectors") { com.qigai.neon.ui.caps.ConnectorsRoute(vm, onBack = { nav.popBackStack() }, onOpenHands = { nav.navigate("hands") }) }
+            composable("connectors") { com.qigai.neon.ui.caps.ConnectorsRoute(vm, onBack = { nav.popBackStack() }, onOpenHands = { nav.navigate("hands") }, onMarket = { nav.navigate("connector-market") }) }
+            composable("connector-market") { com.qigai.neon.ui.market.ConnectorMarketRoute(vm, onBack = { nav.popBackStack() }) }
+            composable("skill-market") { com.qigai.neon.ui.market.SkillMarketRoute(vm, onBack = { nav.popBackStack() }) }
             composable("hands") { com.qigai.neon.ui.caps.HandsRoute(vm, onBack = { nav.popBackStack() }) }
-            composable("skills") { com.qigai.neon.ui.caps.SkillsRoute(vm, onBack = { nav.popBackStack() }) }
+            composable("skills") { com.qigai.neon.ui.caps.SkillsRoute(vm, onBack = { nav.popBackStack() }, onMarket = { nav.navigate("skill-market") }) }
             composable("sandbox") { com.qigai.neon.ui.caps.SandboxRoute(vm, onBack = { nav.popBackStack() }) }
             composable("memory") { com.qigai.neon.ui.caps.MemoryTasksRoute(vm, onBack = { nav.popBackStack() }) }
         }

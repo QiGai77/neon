@@ -12,14 +12,22 @@ mkdir -p "$ASSETS_DIR"
 TMP_CONTAINER="neon-rootfs-builder-$$"
 docker rm -f "$TMP_CONTAINER" >/dev/null 2>&1 || true
 
-docker create --name "$TMP_CONTAINER" --platform linux/arm64 alpine:3.20 /bin/sh -c "
-  apk add --no-cache bash python3 py3-pip curl jq git sqlite ca-certificates tzdata &&
-  mkdir -p /workspace &&
-  rm -rf /var/cache/apk/*
+docker create --name "$TMP_CONTAINER" --platform linux/arm64 alpine:3.22 /bin/sh -c "
+  apk add --no-cache \
+    bash coreutils findutils grep sed gawk diffutils patch procps less file tree nano \
+    curl wget ca-certificates tzdata openssh-client jq ripgrep fd unzip zip xz tar \
+    git sqlite \
+    python3 py3-pip uv \
+    nodejs npm pnpm \
+    build-base cmake pkgconf linux-headers &&
+  npm config set update-notifier false --global &&
+  mkdir -p /workspace /root/.cache &&
+  rm -rf /var/cache/apk/* /root/.npm /tmp/*
 "
 
 docker start -a "$TMP_CONTAINER"
 docker export "$TMP_CONTAINER" | gzip -9 > "$ASSETS_DIR/rootfs-arm64.tar.gz"
 docker rm -f "$TMP_CONTAINER" >/dev/null 2>&1 || true
 
+sha256sum "$ASSETS_DIR/rootfs-arm64.tar.gz" | cut -c1-16 > "$ASSETS_DIR/rootfs-arm64.version"
 ls -lh "$ASSETS_DIR/rootfs-arm64.tar.gz"

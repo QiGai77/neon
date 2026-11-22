@@ -1,0 +1,12 @@
+brainstorming obra/superpowers
+code-review mattpocock/skills
+diagnosing-bugs mattpocock/skills
+find-skills vercel-labs/skills
+frontend-design anthropics/skills
+grill-me mattpocock/skills
+mcp-builder anthropics/skills
+skill-creator anthropics/skills
+systematic-debugging obra/superpowers
+test-driven-development obra/superpowers
+verification-before-completion obra/superpowers
+writing-plans obra/superpowers

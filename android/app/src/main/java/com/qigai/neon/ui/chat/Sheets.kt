@@ -181,7 +181,7 @@ fun SheetHeader(icon: ImageVector, title: String, sub: String) {
 }
 
 @Composable
-private fun NeonField(
+fun NeonField(
     value: String,
     onValue: (String) -> Unit,
     placeholder: String,

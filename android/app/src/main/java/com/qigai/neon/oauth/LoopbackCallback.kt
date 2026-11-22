@@ -33,7 +33,8 @@ object LoopbackCallback {
         val deferred = CompletableDeferred<OAuthCallbackResult>()
         pendingDeepLink = deferred
         socket.use { srv ->
-            val client = srv.accept()
+            srv.soTimeout = 5 * 60 * 1000
+            val client = try { srv.accept() } catch (e: java.net.SocketTimeoutException) { error("授权超时") }
             client.use { s ->
                 val reader = BufferedReader(InputStreamReader(s.getInputStream()))
                 val requestLine = reader.readLine().orEmpty()

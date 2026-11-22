@@ -38,7 +38,10 @@ class PRootKernel(private val rootfsManager: RootfsManager) {
         put("TERM", "xterm-256color")
         put("LANG", "C.UTF-8")
         put("PROOT_TMP_DIR", rootfsManager.tmpDir.absolutePath)
-        put("TMPDIR", rootfsManager.tmpDir.absolutePath)
+        put("TMPDIR", "/tmp")
+        put("UV_CACHE_DIR", "/root/.cache/uv")
+        put("npm_config_cache", "/root/.npm")
+        put("npm_config_update_notifier", "false")
         put("LD_LIBRARY_PATH", rootfsManager.prootBinary().parentFile!!.absolutePath)
         val loader = rootfsManager.loaderBinary()
         if (loader.exists()) {

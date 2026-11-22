@@ -107,6 +107,7 @@ fun SkillsContent(
     onDistill: () -> Unit,
     onViewTrace: () -> Unit,
     onAdd: () -> Unit = {},
+    onMarket: (() -> Unit)? = null,
 ) {
     val c = Neon.colors
     Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
@@ -117,6 +118,24 @@ fun SkillsContent(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item(key = "search") { SearchField(query, onQuery, "搜索技能") }
+            if (onMarket != null) item(key = "market") {
+                Row(
+                    Modifier.fillMaxWidth().clip(NeonShapes.card).background(c.bgSurface).border(1.dp, c.borderCard, NeonShapes.card)
+                        .clickable(onClick = onMarket).padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(40.dp).clip(NeonShapes.squircle).background(c.accent), contentAlignment = Alignment.Center) {
+                        Icon(Lucide.Store, null, Modifier.size(19.dp), tint = c.onAccent)
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("技能市场", style = NeonType.cardTitle().copy(fontSize = 16.sp))
+                        Spacer(Modifier.height(3.dp))
+                        Text("从 skills.sh 安装热门技能", style = NeonType.caption().copy(fontSize = 13.sp))
+                    }
+                    Icon(Lucide.ChevronRight, null, Modifier.size(18.dp), tint = c.inkTertiary)
+                }
+            }
             if (learned != null) item(key = "learned") { LearnedCard(learned, onDistill, onViewTrace) }
             item(key = "head") {
                 Row(Modifier.padding(top = 4.dp)) {

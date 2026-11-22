@@ -111,15 +111,35 @@ fun ConnectorsContent(
     onOpen: (ConnectorUi) -> Unit,
     onAction: (ConnectorUi) -> Unit,
     onAddMcp: () -> Unit,
+    onMarket: (() -> Unit)? = null,
+    connectedCount: Int = 0,
 ) {
     val c = Neon.colors
     Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding()) {
-        PageTopBar("连接器", onBack) { IconBtn(Lucide.Search, "搜索", onClick = onSearch) }
+        PageTopBar("连接器", onBack) { IconBtn(Lucide.Store, "连接器市场", onClick = onSearch) }
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 2.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            if (onMarket != null) item(key = "market") {
+                Row(
+                    Modifier.fillMaxWidth().clip(NeonShapes.card).background(c.bgSurface).border(1.dp, c.borderCard, NeonShapes.card)
+                        .clickable(onClick = onMarket).padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(40.dp).clip(NeonShapes.squircle).background(c.accent), contentAlignment = Alignment.Center) {
+                        Icon(Lucide.Store, null, Modifier.size(19.dp), tint = c.onAccent)
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("连接器市场", style = NeonType.cardTitle().copy(fontSize = 16.sp))
+                        Spacer(Modifier.height(3.dp))
+                        Text(if (connectedCount > 0) "已连接 $connectedCount 个" else "精选服务和 MCP 官方市场", style = NeonType.caption().copy(fontSize = 13.sp))
+                    }
+                    Icon(Lucide.ChevronRight, null, Modifier.size(18.dp), tint = c.inkTertiary)
+                }
+            }
             ConnectorGroup.entries.forEach { g ->
                 val rows = connectors.filter { it.group == g }
                 if (rows.isEmpty()) return@forEach

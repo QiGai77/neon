@@ -171,6 +171,8 @@ fun ChatScreen(vm: MainViewModel, openSheet: (SheetKind?) -> Unit, onOpenSetting
             skills = skillDocs.map { d -> PaletteSkill(d.name, d.command.removePrefix("/"), com.qigai.neon.ui.icons.Lucide.Sparkles) },
             hands = s.handsEnabled,
             onHands = { on -> scope.launch { vm.c.settings.put(com.qigai.neon.data.SettingsRepository.HANDS, if (on) "1" else "0") } },
+            opsCollapsed = s.opsCollapsed,
+            onOpsCollapsed = { on -> scope.launch { vm.c.settings.put(com.qigai.neon.data.SettingsRepository.OPS_COLLAPSED, if (on) "1" else "0") } },
         )
     }
 }
@@ -204,14 +206,31 @@ fun ChatContent(
     skills: List<PaletteSkill> = emptyList(),
     hands: Boolean? = null,
     onHands: (Boolean) -> Unit = {},
+    opsCollapsed: Boolean = false,
+    onOpsCollapsed: (Boolean) -> Unit = {},
 ) {
     val c = Neon.colors
+    val turns = remember(messages) { opTurns(messages) }
+    val openTurns = remember { androidx.compose.runtime.mutableStateListOf<String>() }
+    LaunchedEffect(opsCollapsed) { openTurns.clear() }
+    val shown = remember(messages, turns, opsCollapsed, openTurns.toList()) {
+        messages.filterIndexed { i, m ->
+            if (m.role == "user") return@filterIndexed !turns.toolResultOnly.contains(m.id)
+            if (!opsCollapsed) return@filterIndexed true
+            val t = turns.byMessage[m.id] ?: return@filterIndexed true
+            t.head == m.id || t.head in openTurns || turns.hasText.contains(m.id) || m.status == "error" || i == messages.lastIndex
+        }
+    }
     Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().imePadding()) {
-        ChatTopBar(title, modelLabel, onMenu, onNewChat, onModel)
+        ChatTopBar(
+            title, modelLabel, onMenu, onNewChat, onModel,
+            collapse = if (turns.byMessage.values.any { it.steps > 0 || it.thought }) opsCollapsed else null,
+            onCollapse = { onOpsCollapsed(!opsCollapsed) },
+        )
 
         val listState = rememberLazyListState()
-        LaunchedEffect(messages.size, messages.lastOrNull()?.blocks?.length) {
-            if (messages.isNotEmpty()) listState.scrollToItem(messages.size - 1, Int.MAX_VALUE / 2)
+        LaunchedEffect(shown.size, messages.lastOrNull()?.blocks?.length) {
+            if (shown.isNotEmpty()) listState.scrollToItem(shown.size - 1, Int.MAX_VALUE / 2)
         }
         val results = remember(messages) {
             messages.asSequence().filter { it.role == "user" }
@@ -228,9 +247,19 @@ fun ChatContent(
                     contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
-                    itemsIndexed(messages, key = { _, m -> m.id }) { i, m ->
+                    itemsIndexed(shown, key = { _, m -> m.id }) { i, m ->
                         if (m.role == "user") UserBubble(m)
-                        else AssistantMessage(m, isLast = i == messages.lastIndex, busy = busy, toolResults = results, onRegenerate = onRegenerate)
+                        else {
+                            val t = turns.byMessage[m.id]
+                            val folded = opsCollapsed && t != null && t.head !in openTurns
+                            AssistantMessage(
+                                m, isLast = m.id == messages.lastOrNull()?.id, busy = busy, toolResults = results, onRegenerate = onRegenerate,
+                                showOps = !folded,
+                                ops = if (opsCollapsed && t != null && t.head == m.id && (t.steps > 0 || t.thought))
+                                    OpsFold(t.steps, live = busy && t.last == messages.lastOrNull()?.id, open = !folded) else null,
+                                onOps = { t?.head?.let { h -> if (h in openTurns) openTurns.remove(h) else openTurns.add(h) } },
+                            )
+                        }
                     }
                 }
             }
@@ -264,7 +293,10 @@ fun ChatContent(
 }
 
 @Composable
-private fun ChatTopBar(title: String?, modelLabel: String?, onMenu: () -> Unit, onNewChat: () -> Unit, onModel: () -> Unit) {
+private fun ChatTopBar(
+    title: String?, modelLabel: String?, onMenu: () -> Unit, onNewChat: () -> Unit, onModel: () -> Unit,
+    collapse: Boolean? = null, onCollapse: () -> Unit = {},
+) {
     val c = Neon.colors
     Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         IconBtn(Lucide.Text, "菜单", onClick = onMenu)
@@ -289,8 +321,46 @@ private fun ChatTopBar(title: String?, modelLabel: String?, onMenu: () -> Unit, 
                 Icon(Lucide.ChevronDown, "选择模型", Modifier.size(13.dp), tint = c.inkTertiary)
             }
         }
+        if (collapse != null) IconBtn(if (collapse) Lucide.ChevronsUpDown else Lucide.ChevronsDownUp, if (collapse) "展开全部操作" else "折叠全部操作", tint = c.inkSecondary, onClick = onCollapse)
         IconBtn(Lucide.SquarePen, "新对话", onClick = onNewChat)
     }
+}
+
+/** A user turn's tool work: the first assistant message carries the folded line. */
+private data class OpTurn(val head: String, val last: String, val steps: Int, val thought: Boolean)
+
+private class OpTurns(
+    val byMessage: Map<String, OpTurn>,
+    val hasText: Set<String>,
+    val toolResultOnly: Set<String>,
+)
+
+private fun opTurns(messages: List<MessageEntity>): OpTurns {
+    val by = mutableMapOf<String, OpTurn>()
+    val text = mutableSetOf<String>()
+    val results = mutableSetOf<String>()
+    var group = mutableListOf<MessageEntity>()
+    fun flush() {
+        if (group.isEmpty()) return
+        var steps = 0; var thought = false
+        group.forEach { m ->
+            val blocks = BlocksJson.decode(m.blocks)
+            steps += blocks.count { it is ContentBlock.ToolUse || it is ContentBlock.ServerToolUse }
+            if (blocks.any { it is ContentBlock.Thinking }) thought = true
+            if (blocks.any { it is ContentBlock.Text && it.text.isNotBlank() }) text += m.id
+        }
+        val t = OpTurn(group.first().id, group.last().id, steps, thought)
+        group.forEach { by[it.id] = t }
+        group = mutableListOf()
+    }
+    messages.forEach { m ->
+        if (m.role == "user") {
+            val blocks = BlocksJson.decode(m.blocks)
+            if (blocks.isNotEmpty() && blocks.all { it is ContentBlock.ToolResult }) results += m.id else flush()
+        } else group += m
+    }
+    flush()
+    return OpTurns(by, text, results)
 }
 
 @Composable

@@ -208,7 +208,7 @@ fun rememberWorkspaceAuthorizer(vm: MainViewModel): () -> Unit {
 }
 
 @Composable
-fun ConnectorsRoute(vm: MainViewModel, onBack: () -> Unit, onOpenHands: () -> Unit) {
+fun ConnectorsRoute(vm: MainViewModel, onBack: () -> Unit, onOpenHands: () -> Unit, onMarket: () -> Unit = {}) {
     val c = vm.c
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -218,6 +218,7 @@ fun ConnectorsRoute(vm: MainViewModel, onBack: () -> Unit, onOpenHands: () -> Un
     val authorize = rememberWorkspaceAuthorizer(vm)
     var addMcp by remember { mutableStateOf(false) }
     var webhook by remember { mutableStateOf(false) }
+    var detail by remember { mutableStateOf<ConnectorEntity?>(null) }
     val notif = remember(rows) { NotificationManagerCompat.getEnabledListenerPackages(ctx).contains(ctx.packageName) }
 
     val list = buildList {
@@ -231,8 +232,12 @@ fun ConnectorsRoute(vm: MainViewModel, onBack: () -> Unit, onOpenHands: () -> Un
                 "error" -> ConnectorStatus.Failed("失败")
                 else -> ConnectorStatus.Idle
             }
-            add(ConnectorUi(e.id, group, e.name, e.endpointUrl.orEmpty(), st, icon = if (group == ConnectorGroup.LOCAL) Lucide.Server else Lucide.Plug,
-                badge = if (e.category == "local_stdio") "本地" else "MCP", action = "重试"))
+            val preset = com.qigai.neon.connectors.ConnectorCatalog.byId(e.id)
+            val sub = if (e.status == "error") e.subtitle else preset?.desc ?: e.endpointUrl.orEmpty()
+            add(ConnectorUi(e.id, group, e.name, sub, st,
+                monogram = if (preset != null && !preset.local) preset.monogram else null,
+                icon = if (group == ConnectorGroup.LOCAL) Lucide.SquareTerminal else Lucide.Plug,
+                badge = if (e.category == "local_stdio") "沙箱" else null, action = "重试"))
         }
         add(ConnectorUi("hands", ConnectorGroup.LOCAL, "Hands", "操作手机", if (a11y != null) ConnectorStatus.Connected("已开启") else ConnectorStatus.Idle, icon = Lucide.Hand, action = "开启"))
         add(ConnectorUi("phone", ConnectorGroup.LOCAL, "通知", "读取最近的通知", if (notif) ConnectorStatus.Connected("已授权") else ConnectorStatus.Idle, icon = Lucide.Smartphone, action = "授权"))
@@ -243,13 +248,15 @@ fun ConnectorsRoute(vm: MainViewModel, onBack: () -> Unit, onOpenHands: () -> Un
     ConnectorsContent(
         connectors = list,
         onBack = onBack,
-        onSearch = { addMcp = true },
+        onSearch = onMarket,
+        onMarket = onMarket,
+        connectedCount = rows.count { it.status == "connected" },
         onOpen = { r ->
             when (r.id) {
                 "hands" -> onOpenHands()
                 "webhook" -> webhook = true
                 "google" -> if (!s.workspaceConnected) authorize()
-                else -> {}
+                else -> detail = rows.firstOrNull { it.id == r.id }
             }
         },
         onAction = { r ->
@@ -260,7 +267,7 @@ fun ConnectorsRoute(vm: MainViewModel, onBack: () -> Unit, onOpenHands: () -> Un
                 "webhook" -> if (c.tokens.getWebhookUrl().isBlank()) webhook = true else scope.launch {
                     c.webhook.trigger("""{"event":"neon_ping"}""").fold({ vm.toast("Webhook 正常") }, { vm.toast(it.message ?: "失败") })
                 }
-                else -> rows.firstOrNull { it.id == r.id }?.let { e -> scope.launch { probeMcp(vm, e.id, e.name, e.endpointUrl.orEmpty(), e.category == "local_stdio") } }
+                else -> rows.firstOrNull { it.id == r.id }?.let { e -> scope.launch { reconnect(vm, e) } }
             }
         },
         onAddMcp = { addMcp = true },
@@ -270,8 +277,25 @@ fun ConnectorsRoute(vm: MainViewModel, onBack: () -> Unit, onOpenHands: () -> Un
         addMcp = false
         if (target.isNotBlank()) scope.launch {
             val local = !target.startsWith("http")
-            probeMcp(vm, UUID.randomUUID().toString().take(8), name.ifBlank { if (local) "本地 MCP" else "MCP" }, target, local)
+            val id = UUID.randomUUID().toString().filter { it.isLetterOrDigit() }.take(8)
+            val n = name.ifBlank { if (local) "本地 MCP" else "MCP" }
+            (if (local) vm.c.mcpHub.connectLocal(id, n, target) else vm.c.mcpHub.connectRemote(id, n, target.trim()))
+                .fold({ vm.toast("$n：$it 个工具") }, { vm.toast("$n 连接失败") })
         }
+    }
+    detail?.let { e ->
+        com.qigai.neon.ui.market.InfoDialog(
+            title = e.name,
+            lines = listOfNotNull(
+                if (e.status == "connected") "${e.toolCount} 个工具" else e.subtitle.takeIf { it.isNotBlank() },
+                e.endpointUrl,
+            ),
+            onDismiss = { detail = null },
+            actions = {
+                PillButton("断开", kind = ButtonKind.Danger, height = 40.dp, onClick = { scope.launch { c.mcpHub.disconnect(e.id) }; detail = null })
+                PillButton("重新连接", kind = ButtonKind.Secondary, height = 40.dp, onClick = { detail = null; scope.launch { reconnect(vm, e) } })
+            },
+        )
     }
     if (webhook) InputDialog("Webhook", listOf(Field("地址", c.tokens.getWebhookUrl()), Field("签名密钥", c.tokens.getWebhookSecret())), "保存", { webhook = false }) { (url, secret) ->
         webhook = false
@@ -279,35 +303,12 @@ fun ConnectorsRoute(vm: MainViewModel, onBack: () -> Unit, onOpenHands: () -> Un
     }
 }
 
-/** Connects a remote (OAuth discovery + PKCE) or sandbox stdio MCP server and stores its tool list. */
-private suspend fun probeMcp(vm: MainViewModel, id: String, name: String, target: String, local: Boolean) {
-    val c = vm.c
-    val dao = c.db.connectorDao()
-    val category = if (local) "local_stdio" else "remote_mcp"
-    dao.upsert(ConnectorEntity(id, name, category, if (local) "正在启动" else "正在连接", target, "connecting", 0))
-    var tools = if (local) c.localMcp.listTools(target) else c.mcp.listTools(target, c.tokens.getConnectorToken(id))
-    if (!local && tools.isFailure) {
-        val meta = c.mcpDiscovery.discover(target)
-        if (meta != null) {
-            dao.upsert(ConnectorEntity(id, name, category, "等待授权", target, "connecting", 0))
-            val clientId = meta.registrationEndpoint?.let { c.mcpDiscovery.dynamicRegisterClient(it, "com.qigai.neon://oauth/callback") } ?: "neon-android-client"
-            c.mcpOAuth.runPkceFlow(meta.authorizationEndpoint, meta.tokenEndpoint, clientId, meta.scopesSupported.ifEmpty { listOf("mcp:tools") })
-                .onSuccess { tok ->
-                    c.tokens.saveConnectorToken(id, tok.accessToken, tok.refreshToken)
-                    tools = c.mcp.listTools(target, tok.accessToken)
-                }
-        }
-    }
-    tools.onSuccess { list ->
-        val arr = Json.encodeToString(kotlinx.serialization.json.JsonArray.serializer(), kotlinx.serialization.json.JsonArray(list.map { t ->
-            buildJsonObject { put("name", t.name); put("description", t.description); put("inputSchema", t.inputSchema) }
-        }))
-        dao.upsert(ConnectorEntity(id, name, category, "已连接", target, "connected", list.size, arr))
-        vm.toast("$name：${list.size} 个工具")
-    }.onFailure { e ->
-        dao.upsert(ConnectorEntity(id, name, category, e.message.orEmpty(), target, "error", 0))
-        vm.toast("$name 连接失败")
-    }
+/** Connects again with what is already stored (token, headers, OAuth refresh), signing in again if needed. */
+private suspend fun reconnect(vm: MainViewModel, e: ConnectorEntity) {
+    val hub = vm.c.mcpHub
+    val r = if (e.category == "local_stdio") hub.connectLocal(e.id, e.name, e.endpointUrl.orEmpty())
+    else hub.connectRemote(e.id, e.name, e.endpointUrl.orEmpty())
+    r.fold({ vm.toast("${e.name}：$it 个工具") }, { vm.toast("${e.name}：${it.message ?: "连接失败"}") })
 }
 
 // ───────────────────────── Hands ─────────────────────────
@@ -365,7 +366,7 @@ fun riskOf(s: String) = when {
 }
 
 @Composable
-fun SkillsRoute(vm: MainViewModel, onBack: () -> Unit) {
+fun SkillsRoute(vm: MainViewModel, onBack: () -> Unit, onMarket: () -> Unit = {}) {
     val c = vm.c
     val scope = rememberCoroutineScope()
     val docs by c.skills.skills.collectAsState()
@@ -373,9 +374,9 @@ fun SkillsRoute(vm: MainViewModel, onBack: () -> Unit) {
     var query by remember { mutableStateOf("") }
     var adding by remember { mutableStateOf(false) }
     var viewing by remember { mutableStateOf<com.qigai.neon.skills.SkillDocument?>(null) }
-    val shown = docs.filter { query.isBlank() || it.name.contains(query, true) || it.command.contains(query, true) }
+    val shown = docs.filter { query.isBlank() || it.name.contains(query, true) || it.command.contains(query, true) || it.description.contains(query, true) }
     SkillsContent(
-        skills = shown.map { d -> SkillUi(d.name, d.command.removePrefix("/"), iconFor(d.connectors), riskOf(d.risk), d.connectors) },
+        skills = shown.map { d -> SkillUi(d.name, d.command.removePrefix("/"), iconFor(d.connectors), riskOf(d.risk), d.connectors.ifEmpty { listOfNotNull(d.source?.substringBeforeLast('/')) }) },
         learned = if (traces.isEmpty()) null else LearnedRunUi(
             "从上次操作生成技能",
             SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(Date(traces.last().createdAt)),
@@ -387,6 +388,7 @@ fun SkillsRoute(vm: MainViewModel, onBack: () -> Unit) {
         onDistill = { scope.launch { c.skillSynth.synthesizeFromTraces(traces).fold({ vm.toast("已保存「${it.name}」") }, { vm.toast(it.message ?: "生成失败") }) } },
         onViewTrace = {},
         onAdd = { adding = true },
+        onMarket = onMarket,
     )
     if (adding) InputDialog("添加技能", listOf(Field("SKILL.md", multiline = true)), "保存", { adding = false }) { (md) ->
         adding = false
@@ -402,7 +404,7 @@ fun SkillsRoute(vm: MainViewModel, onBack: () -> Unit) {
                 Text(d.body, style = NeonType.secondary(), modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()))
                 Spacer(Modifier.height(14.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
-                    PillButton("删除", kind = ButtonKind.Danger, height = 40.dp, onClick = { scope.launch { c.skills.deleteSkill(d.fileName) }; viewing = null })
+                    PillButton("删除", kind = ButtonKind.Danger, height = 40.dp, onClick = { scope.launch { c.skills.deleteSkill(d) }; viewing = null })
                     PillButton("关闭", height = 40.dp, onClick = { viewing = null })
                 }
             }
@@ -425,6 +427,12 @@ fun SandboxRoute(vm: MainViewModel, onBack: () -> Unit) {
     LaunchedEffect(Unit) { if (status !is SandboxStatus.Ready) runCatching { c.rootfs.ensureInitialized() } }
     val ctx = LocalContext.current
     val block = pending?.takeIf { isSandboxRequest(it) }
+    var installing by remember { mutableStateOf<com.qigai.neon.sandbox.DevEnv?>(null) }
+    var envTick by remember { mutableStateOf(0) }
+    val envs = remember(status, envTick, installing) {
+        if (status !is SandboxStatus.Ready) emptyList()
+        else com.qigai.neon.sandbox.DevEnv.entries.map { e -> DevEnvUi(e.name, e.label, c.rootfs.isInstalled(e), installing == e) }
+    }
     fun submit() {
         val cmd = input.trim()
         if (cmd.isEmpty()) return
@@ -441,7 +449,7 @@ fun SandboxRoute(vm: MainViewModel, onBack: () -> Unit) {
             SandboxStatus.Checking -> "检查中"
         },
         facts = when (val st = status) {
-            is SandboxStatus.Ready -> listOfNotNull(st.arch, if (st.pythonAvailable) "Python" else null, "/workspace")
+            is SandboxStatus.Ready -> listOf(st.arch, "/workspace")
             is SandboxStatus.Extracting -> listOf(st.detail)
             is SandboxStatus.MissingBundle -> listOf(st.reason)
             is SandboxStatus.Error -> listOf(st.message)
@@ -476,6 +484,16 @@ fun SandboxRoute(vm: MainViewModel, onBack: () -> Unit) {
             }
         },
         onSubmit = { submit() },
+        envs = envs,
+        onEnv = { ui ->
+            val env = com.qigai.neon.sandbox.DevEnv.valueOf(ui.id)
+            if (installing == null) scope.launch {
+                installing = env
+                val r = c.shell.execute("apk add --no-cache ${env.packages}", timeoutSec = 1200)
+                installing = null; envTick++
+                vm.toast(if (r.exitCode == 0) "${env.label} 已安装" else "${env.label} 安装失败")
+            }
+        },
     )
 }
 

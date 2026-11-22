@@ -22,4 +22,5 @@ android-twa/.gradle/
 
 # sandbox payload (built in CI)
 android/app/src/main/assets/rootfs-arm64.tar*
+android/app/src/main/assets/rootfs-arm64.version
 android/app/src/main/jniLibs/

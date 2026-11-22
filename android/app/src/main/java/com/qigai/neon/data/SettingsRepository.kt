@@ -25,6 +25,8 @@ data class AppSettings(
     val driveLastSync: Long? get() = raw[SettingsRepository.DRIVE_LAST_SYNC]?.toLongOrNull()
     val driveError: String? get() = raw[SettingsRepository.DRIVE_ERROR]
     val handsEnabled: Boolean get() = raw[SettingsRepository.HANDS] == "1"
+    /** Chat shows each turn's thinking and tool calls as one folded line. */
+    val opsCollapsed: Boolean get() = raw[SettingsRepository.OPS_COLLAPSED] == "1"
     val workspaceConnected: Boolean get() = raw[SettingsRepository.WORKSPACE] == "1"
     /** Ordered drawer cards the user kept; null = default set. */
     val drawerCards: List<String> get() = raw[SettingsRepository.DRAWER_CARDS]?.split(',')?.filter { it.isNotBlank() } ?: SettingsRepository.DEFAULT_DRAWER
@@ -47,6 +49,7 @@ class SettingsRepository(private val dao: SettingDao, scope: CoroutineScope) {
         const val DRIVE_LAST_SYNC = "drive_last_sync"
         const val DRIVE_ERROR = "drive_error"
         const val HANDS = "hands_enabled"
+        const val OPS_COLLAPSED = "ops_collapsed"
         const val WORKSPACE = "workspace_connected"
         const val DRAWER_CARDS = "drawer_cards"
         val DEFAULT_DRAWER = listOf("quota", "sandbox", "drive", "hubs")

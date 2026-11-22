@@ -277,13 +277,17 @@ fun AssistantMessage(
     busy: Boolean,
     toolResults: Map<String, ContentBlock.ToolResult>,
     onRegenerate: () -> Unit,
+    showOps: Boolean = true,
+    ops: OpsFold? = null,
+    onOps: () -> Unit = {},
 ) {
     val c = Neon.colors
     val blocks = remember(m.blocks) { BlocksJson.decode(m.blocks) }
     val streaming = m.status == "streaming"
     val clip = LocalClipboardManager.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (streaming && blocks.isEmpty()) ThinkingSection("", null, live = true, liveStart = m.createdAt)
+        if (ops != null) OpsFoldRow(ops, onOps)
+        if (showOps && streaming && blocks.isEmpty()) ThinkingSection("", null, live = true, liveStart = m.createdAt)
 
         val toolUses = blocks.mapNotNull {
             when (it) {
@@ -294,7 +298,7 @@ fun AssistantMessage(
         }
         blocks.forEachIndexed { i, b ->
             when (b) {
-                is ContentBlock.Thinking -> ThinkingSection(
+                is ContentBlock.Thinking -> if (showOps) ThinkingSection(
                     b.thinking, b.durationMs,
                     live = streaming && blocks.drop(i + 1).none { it is ContentBlock.Text && it.text.isNotBlank() },
                     liveStart = m.createdAt,
@@ -303,14 +307,14 @@ fun AssistantMessage(
                 else -> Unit
             }
         }
-        if (toolUses.isNotEmpty()) {
+        if (showOps && toolUses.isNotEmpty()) {
             ToolChips(toolUses.map { it.second to toolSummary(it.third) }, toolResults, toolUses.map { it.first })
             toolUses.lastOrNull()?.let { (id, name, input) ->
                 toolResults[id]?.let { r -> TerminalPeek("$name ${toolSummary(input)}".trim(), r.content, r.isError) }
             }
         }
         if (m.status == "error") ErrorCard(m.error, canRetry = isLast && !busy, onRegenerate)
-        if (!streaming) {
+        if (!streaming && (showOps || isLast || blocks.any { it is ContentBlock.Text && it.text.isNotBlank() })) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val text = blocks.plainText()
                 if (text.isNotBlank()) SmallAction(Lucide.Copy, "复制") { clip.setText(AnnotatedString(text)) }
@@ -324,6 +328,33 @@ fun AssistantMessage(
                 Text(meta, style = NeonType.tnum(NeonType.overline()), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+    }
+}
+
+/** The folded summary of one turn's thinking and tool calls. */
+data class OpsFold(val steps: Int, val live: Boolean, val open: Boolean)
+
+@Composable
+private fun OpsFoldRow(f: OpsFold, onToggle: () -> Unit) {
+    val c = Neon.colors
+    val rot by animateFloatAsState(if (f.open) 0f else -90f, NeonMotion.thinking(), label = "fold")
+    Row(
+        Modifier.clip(NeonShapes.item).clickable(onClick = onToggle).padding(vertical = 6.dp, horizontal = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
+            if (f.live) BreathingDot() else Icon(Lucide.ListChecks, null, Modifier.size(17.dp), tint = c.inkSecondary)
+        }
+        Spacer(Modifier.width(10.dp))
+        val label = when {
+            f.live && f.steps > 0 -> "正在执行第 ${f.steps} 步"
+            f.live -> "思考中"
+            f.steps > 0 -> "已执行 ${f.steps} 步操作"
+            else -> "已深度思考"
+        }
+        Text(label, style = NeonType.tnum(NeonType.label().copy(color = c.inkSecondary)))
+        Spacer(Modifier.width(6.dp))
+        Icon(Lucide.ChevronUp, null, Modifier.size(16.dp).rotate(rot), tint = c.inkTertiary)
     }
 }
 

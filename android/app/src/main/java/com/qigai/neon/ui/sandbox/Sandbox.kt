@@ -85,6 +85,9 @@ data class TermLine(val kind: LineKind, val text: String, val state: String = ""
 
 data class ShellBlockUi(val command: String, val explanation: String)
 
+/** One toolchain chip: installed ones read as facts, missing ones install on tap. */
+data class DevEnvUi(val id: String, val label: String, val installed: Boolean, val busy: Boolean = false)
+
 @Composable
 fun SandboxContent(
     title: String,
@@ -100,6 +103,8 @@ fun SandboxContent(
     onRunAnyway: () -> Unit,
     onKey: (String) -> Unit,
     onSubmit: () -> Unit = {},
+    envs: List<DevEnvUi> = emptyList(),
+    onEnv: (DevEnvUi) -> Unit = {},
 ) {
     val c = Neon.colors
     Column(Modifier.fillMaxSize().background(c.bgCanvas).statusBarsPadding().navigationBarsPadding()) {
@@ -113,6 +118,13 @@ fun SandboxContent(
         }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             facts.forEachIndexed { i, f -> TagChip(f, active = i == 0) }
+            envs.forEach { e ->
+                when {
+                    e.installed -> TagChip(e.label)
+                    e.busy -> NeonChip("${e.label} 安装中", style = ChipStyle.Soft, height = 28.dp)
+                    else -> NeonChip(e.label, style = ChipStyle.Outline, icon = Lucide.Plus, height = 28.dp, onClick = { onEnv(e) })
+                }
+            }
         }
         Spacer(Modifier.height(12.dp))
         Column(Modifier.weight(1f).padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
